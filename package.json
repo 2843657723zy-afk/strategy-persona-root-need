@@ -1,0 +1,9 @@
+{
+  "name": "strategy-persona-root-need",
+  "version": "1.0.0",
+  "private": true,
+  "description": "漫画AIGC · 拖拽式标签重叠图谱（画像/根需求/痛点/方案），带轻量后端持久化",
+  "dependencies": {
+    "@vercel/kv": "^1.0.1"
+  }
+}

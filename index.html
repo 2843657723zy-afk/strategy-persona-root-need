@@ -1,0 +1,1588 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>漫画AIGC · 拖拽式标签重叠图谱</title>
+<style>
+  :root{
+    --bg:#0b0d12;
+    --panel:#12151d;
+    --line:#242938;
+    --text:#e8eaf0;
+    --sub:#8b90a3;
+    --orange:#ff7a45;
+    --purple:#7c5cff;
+    --green:#2fbf71;
+    --amber:#e0a730;
+    --grayb:#5c6275;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{
+    background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    font-size:15px;overflow:hidden;height:100%;
+  }
+  .app{display:flex;height:100vh;}
+
+  /* ============ TAG POOL SIDEBAR (左1 · 标签池) ============ */
+  .tagsbar{
+    width:172px;flex:none;background:var(--panel);border-right:1px solid var(--line);
+    display:flex;flex-direction:column;overflow-y:auto;padding:16px 12px;
+  }
+  .tagsbar-block-title{font-size:11px;color:var(--sub);letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px;}
+  .tagsbar-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;}
+  .tagsbar-divider{height:1px;background:var(--line);margin:14px 0;}
+  .pool-chip{
+    width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:10.5px;font-weight:700;text-align:center;line-height:1.2;padding:4px;color:#fff;
+    border:2px solid #ffffff30;box-shadow:0 4px 10px #00000040;cursor:grab;user-select:none;touch-action:none;
+  }
+  .pool-chip:hover{filter:brightness(1.1);}
+  .pool-chip.selected{box-shadow:0 0 0 3px #ffffffaa;}
+  .pool-chip.need{background:#2a2f3f;border-color:#4a4f66;color:var(--text);}
+  .pool-chip.need.concern{border-color:#ff4d6a99;border-style:dashed;}
+  .pool-chip.painpoint{background:#2a2f3f;border:2px solid var(--amber);color:var(--text);}
+  .pool-chip.mech.have{background:#2fbf7118;border:2px solid var(--green);color:var(--green);}
+  .pool-chip.mech.build{background:#ff7a4518;border:2px dashed var(--orange);color:var(--orange);}
+  .pool-add{
+    width:56px;height:56px;border-radius:50%;border:2px dashed #ffffff40;color:var(--sub);
+    display:flex;align-items:center;justify-content:center;font-size:22px;cursor:pointer;background:transparent;
+  }
+  .pool-add:hover{border-color:#fff;color:#fff;}
+  .drag-ghost{position:fixed;z-index:999;pointer-events:none;opacity:.92;cursor:grabbing;}
+  .drag-ghost.unbind-armed{outline:2px solid #ff4d4d;filter:grayscale(.35);}
+  .trash-zone{
+    margin-top:auto;padding-top:18px;display:flex;flex-direction:column;align-items:center;text-align:center;
+  }
+  .trash-circle{
+    width:52px;height:52px;border-radius:50%;border:2px dashed #ff4d4d55;color:#ff4d4d99;
+    display:flex;align-items:center;justify-content:center;font-size:20px;
+    transition:border-color .2s,background .2s,transform .2s,color .2s;
+  }
+  .trash-label{font-size:10.5px;color:var(--sub);margin-top:7px;line-height:1.4;}
+  .trash-zone.drop-ready .trash-circle{border-color:#ff4d4d;background:#ff4d4d22;color:#ff4d4d;transform:scale(1.1);}
+  .trash-zone.drop-ready .trash-label{color:#ff4d4d;}
+
+  /* ============ RELATION / BINDING SIDEBAR (左2 · 关联绑定) ============ */
+  .relbar{
+    width:206px;flex:none;background:var(--panel);border-right:1px solid var(--line);
+    display:flex;flex-direction:column;padding:18px 14px;overflow-y:auto;
+  }
+  .relbar-topzone{display:flex;flex-direction:column;align-items:center;padding-bottom:16px;
+    border-bottom:1px dashed var(--line);margin-bottom:14px;}
+  .relbar-circle{
+    width:88px;height:88px;border-radius:50%;border:2px dashed #ffffff40;color:var(--sub);
+    display:flex;align-items:center;justify-content:center;text-align:center;font-size:12px;padding:6px;
+    transition:border-color .2s,background .2s,box-shadow .2s;
+  }
+  .relbar-circle.filled{border-style:solid;color:#fff;font-weight:700;box-shadow:0 4px 14px #00000040;}
+  .relbar-circle.filled.cat-need{background:#2a2f3f;border-color:#4a4f66;color:var(--text);}
+  .relbar-circle.filled.cat-need.concern{border-color:#ff4d6a;border-style:dashed;}
+  .relbar-circle.filled.cat-painpoint{background:#2a2f3f;border-color:var(--amber);border-style:solid;color:var(--text);}
+  .relbar-circle.filled.cat-mech.have{background:#2fbf7118;border-color:var(--green);color:var(--green);}
+  .relbar-circle.filled.cat-mech.build{background:#ff7a4518;border-color:var(--orange);border-style:dashed;color:var(--orange);}
+  .relbar-circle.drop-ready{border-color:var(--purple);background:#7c5cff1a;}
+  .relbar-hint{font-size:11px;color:var(--sub);margin-top:9px;text-align:center;line-height:1.5;}
+  .relbar-related-title{font-size:11px;color:var(--orange);letter-spacing:.5px;font-weight:700;
+    text-transform:uppercase;margin-bottom:10px;}
+  .relbar-related-block{
+    flex:1;min-height:140px;border:2px dashed #ffffff18;border-radius:12px;padding:10px;
+    display:flex;flex-wrap:wrap;gap:8px;align-content:flex-start;transition:border-color .2s,background .2s;
+  }
+  .relbar-related-block.drop-ready{border-color:var(--purple);background:#7c5cff0a;}
+  .relbar-empty{font-size:12px;color:var(--sub);text-align:center;padding:24px 6px;line-height:1.7;}
+
+  /* ============ LEFT COLUMN ============ */
+  .graph-col{flex:1;display:flex;flex-direction:column;min-width:0;}
+  .topbar{
+    padding:14px 22px 10px;border-bottom:1px solid var(--line);
+    display:flex;justify-content:flex-end;align-items:flex-start;gap:16px;flex-wrap:wrap;
+  }
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;}
+  .tbtn{
+    border:1px solid var(--line);background:var(--panel);color:var(--text);
+    border-radius:10px;padding:8px 13px;cursor:pointer;font-size:12.5px;white-space:nowrap;
+  }
+  .tbtn:hover{border-color:#ffffff33;}
+  .tbtn.primary{border-color:var(--purple);background:#7c5cff18;}
+
+  .cnt-badge{
+    position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);
+    background:#12151d;border:1.5px solid #ffffff40;border-radius:20px;
+    font-size:10.5px;font-weight:800;color:var(--text);padding:1px 7px;line-height:1.3;
+    display:none;white-space:nowrap;z-index:2;
+  }
+  .node-need .cnt-badge.hot,.node-painpoint .cnt-badge.hot,.node-mech .cnt-badge.hot{border-color:var(--orange);color:var(--orange);background:#1c1210;}
+
+  /* ============ CANVAS ============ */
+  .canvas-wrap{
+    flex:1;position:relative;overflow:hidden;background:var(--bg);
+    border:2px dashed transparent;transition:border-color .2s,background .2s;
+  }
+  .canvas-wrap.drop-ready{border-color:var(--purple);background:#7c5cff0a;}
+  .canvas-wrap.drop-remove{border-color:#ff4d4d;background:#ff4d4d0a;}
+  #edgeSvg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
+  #nodesLayer{position:absolute;top:0;left:0;width:100%;height:100%;}
+  .canvas-hint{
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    color:var(--sub);font-size:14px;text-align:center;pointer-events:none;
+    border:2px dashed #ffffff18;border-radius:20px;padding:26px 34px;
+  }
+  .canvas-hint b{color:var(--text);display:block;margin-bottom:6px;font-size:15px;}
+
+  .node{
+    position:absolute;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    text-align:center;cursor:pointer;user-select:none;touch-action:none;
+    font-weight:700;transition:opacity .3s,box-shadow .3s,width .35s,height .35s;will-change:transform;
+  }
+  .node-persona{
+    color:#fff;font-size:13px;line-height:1.25;padding:4px;
+    box-shadow:0 6px 22px #00000055;border:2px solid #ffffff30;z-index:5;
+  }
+  .node-need{background:#2a2f3f;border:2px solid #4a4f66;color:var(--text);font-size:12px;padding:3px;}
+  .node-need.glow{border-color:var(--orange);box-shadow:0 0 0 4px #ff7a4535,0 0 24px 6px #ff7a4555;}
+  .node-need.pinned{border-color:#fff;box-shadow:0 0 0 3px #ffffff55;}
+  .node-need.pinned.glow{border-color:#fff;box-shadow:0 0 0 3px #ffffff55,0 0 0 6px #ff7a4535,0 0 24px 6px #ff7a4555;}
+  .node-need.pinned::after{
+    content:"📌";position:absolute;top:-6px;right:-6px;font-size:12px;
+    background:#12151d;border-radius:50%;padding:1px;line-height:1;
+  }
+  .node-need.concern{border-style:dashed;border-color:#ff4d6a;}
+  .node-need.concern.glow{border-color:#ff4d6a;box-shadow:0 0 0 4px #ff4d6a35,0 0 24px 6px #ff4d6a55;}
+  .node-need.concern.pinned{border-color:#fff;}
+  .node-painpoint{background:#2a2f3f;border:2px solid var(--amber);color:var(--text);font-size:11.5px;padding:3px;}
+  .node-painpoint.glow{border-color:var(--amber);box-shadow:0 0 0 4px #e0a73035,0 0 24px 6px #e0a73055;}
+  .node-painpoint.pinned{border-color:#fff;box-shadow:0 0 0 3px #ffffff55;}
+  .node-painpoint.pinned.glow{border-color:#fff;box-shadow:0 0 0 3px #ffffff55,0 0 0 6px #e0a73035,0 0 24px 6px #e0a73055;}
+  .node-painpoint.pinned::after{
+    content:"📌";position:absolute;top:-6px;right:-6px;font-size:12px;
+    background:#12151d;border-radius:50%;padding:1px;line-height:1;
+  }
+  .node-mech{font-size:10.5px;color:var(--text);padding:2px;}
+  .node-mech.have{background:#2fbf7118;border:2px solid var(--green);}
+  .node-mech.build{background:#ff7a4518;border:2px dashed var(--orange);}
+  .node-mech.glow{box-shadow:0 0 0 3px #ffffff30,0 0 18px 3px currentColor;}
+  .node.spawn-in{transform:scale(.2) !important;opacity:0 !important;}
+
+  .petal{
+    position:absolute;background:#1c2130ee;border:1px solid #ffffff28;border-radius:9px;
+    padding:4px 9px;font-size:11px;color:var(--sub);white-space:nowrap;pointer-events:none;
+    transform:translate(-50%,-50%);transition:opacity .3s;z-index:4;
+  }
+  .petal b{color:var(--text);}
+
+  /* ============ RIGHT SIDE PANEL ============ */
+  .side{width:380px;flex:none;background:var(--panel);border-left:1px solid var(--line);
+    padding:20px 20px 30px;overflow-y:auto;}
+  .side h2{font-size:15px;margin-bottom:4px;}
+  .radar-title{font-size:12px;color:var(--orange);letter-spacing:.5px;font-weight:700;
+    text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:6px;}
+  .radar-list{margin-bottom:8px;}
+  .radar-empty{color:var(--sub);font-size:12.8px;line-height:1.8;
+    background:#ffffff06;border:1px solid #ffffff14;border-radius:10px;padding:14px;}
+  .radar-item{background:#ffffff06;border:1px solid #ffffff14;border-radius:10px;padding:10px 12px;margin-bottom:8px;}
+  .radar-item.hot{border-color:#ff7a4550;background:#ff7a4512;}
+  .ri-top{display:flex;justify-content:space-between;align-items:center;}
+  .ri-name{font-size:13.5px;font-weight:700;}
+  .ri-badge{font-size:10.5px;font-weight:700;color:var(--orange);background:#ff7a4520;border:1px solid #ff7a4550;
+    border-radius:20px;padding:1px 8px;}
+  .ri-dots{display:flex;gap:5px;margin-top:6px;}
+  .rdot{width:11px;height:11px;border-radius:50%;display:inline-block;}
+  .ri-mechs{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;}
+  .rmech{font-size:10.5px;padding:2px 7px;border-radius:7px;background:#ffffff08;border:1px solid #ffffff20;}
+  .rmech.have{border-color:#2fbf7150;color:var(--green);}
+  .rmech.build{border-color:#ff7a4550;color:var(--orange);}
+  .rmech.painpoint{border-color:var(--amber);color:var(--amber);}
+
+  .dp-divider{height:1px;background:var(--line);margin:18px 0;}
+  .dp-empty{color:var(--sub);font-size:12.8px;line-height:1.8;}
+  .dp-badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;margin:2px 4px 2px 0;}
+  .dp-badge.have{background:#2fbf7118;color:var(--green);border:1px solid #2fbf7140;}
+  .dp-badge.build{background:#ff7a4518;color:var(--orange);border:1px solid #ff7a4540;}
+  .dp-def{font-size:12.8px;color:var(--sub);margin:9px 0 14px;line-height:1.7;}
+  .dp-sec-title{font-size:11.5px;color:var(--orange);letter-spacing:.5px;font-weight:700;margin:14px 0 8px;text-transform:uppercase;}
+  .dp-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:7px;font-size:12.5px;}
+  .dp-bar-row .nm{width:92px;flex:none;color:var(--sub);}
+  .dp-bar-row .bar{flex:1;height:8px;border-radius:5px;background:#ffffff0c;overflow:hidden;}
+  .dp-bar-row .bar i{display:block;height:100%;border-radius:5px;}
+  .dp-bar-row .vv{width:22px;text-align:right;font-weight:700;font-size:12px;}
+  .dp-dim{background:#ffffff06;border:1px solid #ffffff14;border-radius:9px;padding:8px 10px;margin-bottom:7px;font-size:12px;}
+  .dp-dim b{color:var(--text);display:block;font-size:12px;margin-bottom:2px;}
+  .dp-dim span{color:var(--sub);}
+  .dp-mechitem{background:#ffffff06;border:1px solid #ffffff14;border-radius:9px;padding:9px 11px;margin-bottom:7px;}
+  .dp-mechitem b{font-size:13px;}
+  .dp-mechitem .d{font-size:12px;color:var(--sub);margin-top:3px;}
+  .glossary-btn2{
+    display:block;width:100%;text-align:center;border:1px solid var(--purple);background:#7c5cff14;
+    color:var(--text);border-radius:10px;padding:10px;cursor:pointer;font-size:12.5px;font-weight:600;margin-top:18px;
+  }
+  .glossary-btn2:hover{background:#7c5cff28;}
+
+  /* ============ GLOSSARY DRAWER ============ */
+  .glossary-mask{position:fixed;inset:0;background:#00000070;z-index:200;display:none;}
+  .glossary-mask.open{display:block;}
+  .glossary-drawer{
+    position:fixed;top:0;right:-460px;width:420px;height:100%;background:#12151dfa;
+    border-left:1px solid var(--line);z-index:201;transition:right .3s ease;
+    overflow-y:auto;padding:26px 22px 60px;
+  }
+  .glossary-drawer.open{right:0;}
+  .glossary-drawer h2{font-size:17px;margin-bottom:6px;}
+  .glossary-drawer .gsub{font-size:12px;color:var(--sub);margin-bottom:18px;}
+  .glossary-close{
+    position:absolute;top:20px;right:20px;width:28px;height:28px;border-radius:50%;
+    background:#ffffff0c;border:1px solid var(--line);color:var(--text);cursor:pointer;font-size:14px;
+  }
+  .g-group-title{font-size:11.5px;color:var(--orange);letter-spacing:1px;font-weight:700;margin:18px 0 8px;text-transform:uppercase;}
+  .g-item{background:#ffffff06;border:1px solid #ffffff14;border-radius:9px;padding:9px 12px;margin-bottom:7px;}
+  .g-item b{font-size:13px;display:block;margin-bottom:2px;}
+  .g-item span{font-size:12px;color:var(--sub);}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="tagsbar">
+    <div class="tagsbar-block">
+      <div class="tagsbar-block-title">画像标签</div>
+      <div class="tagsbar-chips" id="poolPersona"></div>
+      <div class="pool-add" data-cat="persona" title="新建画像标签">+</div>
+    </div>
+    <div class="tagsbar-divider"></div>
+    <div class="tagsbar-block">
+      <div class="tagsbar-block-title">需求标签</div>
+      <div class="tagsbar-chips" id="poolNeed"></div>
+      <div class="pool-add" data-cat="need" title="新建需求标签">+</div>
+    </div>
+    <div class="tagsbar-divider"></div>
+    <div class="tagsbar-block">
+      <div class="tagsbar-block-title">痛点标签</div>
+      <div class="tagsbar-chips" id="poolPainpoint"></div>
+      <div class="pool-add" data-cat="painpoint" title="新建痛点标签">+</div>
+    </div>
+    <div class="tagsbar-divider"></div>
+    <div class="tagsbar-block">
+      <div class="tagsbar-block-title">方案标签</div>
+      <div class="tagsbar-chips" id="poolMech"></div>
+      <div class="pool-add" data-cat="mech" title="新建方案标签">+</div>
+    </div>
+    <div class="trash-zone" id="trashZone">
+      <div class="trash-circle">🗑️</div>
+      <div class="trash-label">拖标签到这里删除</div>
+    </div>
+  </div>
+
+  <div class="relbar">
+    <div class="relbar-topzone">
+      <div class="relbar-circle" id="relCircle">拖标签到这里</div>
+      <div class="relbar-hint">点击左边标签，或把标签拖进这个圆里选中它</div>
+    </div>
+    <div class="relbar-related-title">关联标签 · 拖标签池里的标签进来绑定，拖出这个区域取消绑定</div>
+    <div class="relbar-related-block" id="relRelated"></div>
+  </div>
+
+  <div class="graph-col">
+    <div class="topbar">
+      <div class="toolbar">
+        <button class="tbtn" id="clearBoardBtn">清空画板</button>
+        <button class="tbtn" id="resetAllBtn">恢复默认标签库</button>
+      </div>
+      <span style="font-size:11px;color:var(--sub);align-self:center;">实线=需求　┄虚线红边=顾虑(回避型)　已自动保存（本地+云端）</span>
+    </div>
+
+    <div class="canvas-wrap" id="canvasWrap">
+      <svg id="edgeSvg"></svg>
+      <div id="nodesLayer"></div>
+      <div class="canvas-hint" id="canvasHint">
+        <b>画板是空的</b>
+        把左边标签池里的画像/需求标签拖到这里，标签会自动长出重叠关系并发光
+      </div>
+    </div>
+  </div>
+
+  <div class="side" id="sidePanel">
+    <div class="radar-title">🎯 需求雷达 · 画像重叠</div>
+    <div class="radar-list" id="radarList"></div>
+    <div class="dp-divider"></div>
+    <div class="radar-title">🧷 痛点雷达 · 需求重叠（画板里没有画像时才生效）</div>
+    <div class="radar-list" id="painpointRadarList"></div>
+    <div class="dp-divider"></div>
+    <div class="radar-title">🧩 方案雷达 · 需求/痛点重叠（需要先钉住上一层才生效）</div>
+    <div class="radar-list" id="mechRadarList"></div>
+    <div class="dp-divider"></div>
+    <h2>详情面板</h2>
+    <div id="dpEmpty" class="dp-empty">点击画板里任意一个圆看详情：画像的需求侧写、标签被谁需要、机制服务谁。拖动一个需求/痛点标签可以把它"钉住"，展开它下面一层。</div>
+    <div id="dpContent" style="display:none;"></div>
+    <button class="glossary-btn2" id="openGlossary2">📖 打开完整标签图鉴</button>
+  </div>
+</div>
+
+<div class="glossary-mask" id="glossaryMask"></div>
+<div class="glossary-drawer" id="glossaryDrawer">
+  <button class="glossary-close" id="closeGlossary">✕</button>
+  <h2>标签图鉴</h2>
+  <div class="gsub">所有标签的定义都在这，不用猜。</div>
+  <div class="g-group-title">L1 · 根需求标签</div>
+  <div id="gL1"></div>
+  <div class="g-group-title">L1.5 · 痛点标签（根需求往下再拆一层）</div>
+  <div id="gL15"></div>
+  <div class="g-group-title">L2 · 画像细分维度</div>
+  <div id="gL2"></div>
+</div>
+
+<script>
+/* ================= DATA ================= */
+const PERSONAS_DATA = [
+  { id:'pro',    name:'专业漫画作者', color:'#7c5cff', tag:'已经会画，缺的是产能和规模' },
+  { id:'fan',    name:'同人漫画观众', color:'#ff7a45', tag:'嘴上说找同人，其实半只脚是创作者' },
+  { id:'author', name:'小说作者',     color:'#2fbf71', tag:'有完整世界观，缺视觉证据' },
+  { id:'newbie', name:'小白',         color:'#e0a730', tag:'四条根需求全部从0到1' }
+];
+
+const NEEDS_DATA = [
+  { id:'kw',  name:'合口味',     stageY:0, def:'需要找到跟自己口味完全对得上的内容，差一点都不行。',
+    s:{pro:1, fan:5, author:1, newbie:2} },
+  { id:'zc',  name:'想做出来',   stageY:1, def:'脑子里的想法只是想法，得变成能看见、能拿出去的东西才算完。',
+    s:{pro:2, fan:3, author:5, newbie:5} },
+  { id:'zs',  name:'自己说了算', stageY:2, def:'想对一个虚构世界有绝对的决定权，谁演谁、发生什么，我说了算。',
+    s:{pro:3, fan:3, author:3, newbie:5} },
+  { id:'zj',  name:'自己当主角', stageY:2, def:'不想只是看故事，想把自己写进故事里，当主角。',
+    s:{pro:1, fan:4, author:2, newbie:5} },
+  { id:'bkj', name:'被看见',     stageY:3, def:'想让一个真实的人看到自己心里想的东西，并且给点反馈。',
+    s:{pro:3, fan:3, author:5, newbie:5} },
+  { id:'hq',  name:'能换钱',     stageY:4, def:'热爱的东西如果能换成钱，才算是被这个世界真正认可了。',
+    s:{pro:4, fan:1, author:4, newbie:1} },
+
+  { id:'lz',  name:'省力偷懒',   stageY:1, def:'已经会的事，不想再耗更多精力从头来一遍，想用更少的时间换到更多产出。',
+    s:{pro:5, fan:1, author:2, newbie:1} },
+  { id:'gs',  name:'归属感',     stageY:3, def:'想加入一个"我们"，成为圈子里的一份子，而不是被单独看一眼就结束。',
+    s:{pro:2, fan:5, author:2, newbie:3} },
+  { id:'lh',  name:'留痕与证明', stageY:4, def:'想留下点证明自己认真活过、真的做出过东西的痕迹，比当下一次点赞更持久一点。',
+    s:{pro:3, fan:2, author:5, newbie:4} },
+  { id:'rk',  name:'被认可',     stageY:3, def:'想被人认定"这个人是真有点本事"，这份评价能被记住、能积累，不是看一眼就完了。',
+    s:{pro:5, fan:3, author:4, newbie:3} },
+  { id:'fx',  name:'分享欲望',   stageY:3, def:'东西一做出来就憋不住想推给人看，哪怕做得不算好——这是主动的炫，不是等着被发现。',
+    s:{pro:2, fan:3, author:3, newbie:4} },
+  { id:'hx',  name:'幻想自己成为主角', stageY:2, def:'光是在脑子里把自己变成另一个更完整、更厉害的角色，这件事本身就够了，不需要真的写出来。',
+    s:{pro:1, fan:5, author:2, newbie:3} },
+
+  // ---- 以下3个是"回避型"需求（怕什么，而不是想要什么），画板里用虚线红边区分 ----
+  { id:'pm',  name:'怕丢面子',   stageY:0, concern:true, def:'想在真正拿给人看之前，有个能画丑、能犯错也不会社死的地方先练手。',
+    s:{pro:1, fan:4, author:2, newbie:5} },
+  { id:'qt',  name:'情绪逃离',   stageY:0, concern:true, def:'现实太累，想在别的世界里待一会儿，把自己的状态调回舒服一点的区间。',
+    s:{pro:1, fan:4, author:2, newbie:3} },
+  { id:'aiq', name:'怕被发现是AI画的', stageY:3, concern:true, def:'怕被人知道这是AI画的以后，会被当成是在装、在骗人、没有真本事。',
+    s:{pro:5, fan:2, author:4, newbie:1} }
+];
+
+const DIMS_DATA = [
+  { id:'d1', name:'起点材料',   val:{pro:'自己会画，就是画得不够快', fan:'只有一个脑洞，没写成东西', author:'已经写完一整个故事', newbie:'什么都没有，从零开始'} },
+  { id:'d2', name:'主角归属',   val:{pro:'画的是别人的角色', fan:'钻进别人的世界里演自己', author:'自己写的角色', newbie:'把真实的自己写成新故事的主角'} },
+  { id:'d3', name:'动手方式',   val:{pro:'自己一个个做，就想做得更快更多', fan:'自己不动手，靠说的让AI改剧情', author:'把一部分决定权交出去，让AI去改', newbie:'自己动手选，但要简单到不用学'} },
+  { id:'d4', name:'想给谁看',   val:{pro:'同行、客户', fan:'同好圈子里的人', author:'认真的读者', newbie:'随便一个真实的人就行'} },
+  { id:'d5', name:'想被看见什么', val:{pro:'夸手艺', fan:'认可我的品味、脑洞', author:'认真对待我写的这个世界', newbie:'看见"我"这个人，不是作品'} },
+  { id:'d6', name:'图不图钱',   val:{pro:'靠手艺挣钱', fan:'不图钱，就是想表达', author:'靠自己想出来的点子挣钱', newbie:'不图钱，就是想被看见'} },
+  { id:'d7', name:'嫌不嫌麻烦', val:{pro:'复杂点没事，习惯用工具', fan:'得一句话就能搞定', author:'愿意花点时间调，但不想学画画', newbie:'稍微麻烦一点就跑了'} },
+  { id:'d8', name:'放不放权给AI', val:{pro:'不愿意，AI只能打杂', fan:'无所谓，按我说的点子做出来就行', author:'画面可以交给AI，但剧情、世界观不能乱改', newbie:'完全靠AI拿主意，自己最多二选一'} }
+];
+
+const MECHS_DATA = [
+  { id:'m1', name:'六维标签体系',                     short:'六维标签',   status:'have',  serves:['kw'],
+    def:'已有的内容标签系统，负责把作品和用户口味精准匹配。' },
+  { id:'m2', name:'小说转漫画主链路',                 short:'转漫画链路', status:'have',  serves:['zc'],
+    def:'已有的转换流程，把完整文本自动转成分镜和画面。' },
+  { id:'m3', name:'导演模式（AI供剧情，用户做选择）',   short:'导演模式',   status:'build', serves:['zs','zj'],
+    def:'待建，AI给出剧情选项、用户做选择，同时接住"想说了算"和"想当主角"两种诉求。' },
+  { id:'m4', name:'self-insert模板 / 日记模式',        short:'self-insert',status:'build', serves:['zj'],
+    def:'待建，让用户把自己写进故事，自己当主角。' },
+  { id:'m5', name:'催更 / 分镜级评论 / 读者点梗',       short:'催更点梗',   status:'build', serves:['pp_fb','zs'],
+    def:'待建，读者催更、逐格评论、留言点梗——直接回应了"能感受到用户反馈"这个痛点；点梗本身也是一种远程的"说了算"。' },
+  { id:'m6', name:'打赏 / 付费解锁 / 角色授权分成',     short:'打赏分成',   status:'build', serves:['hq'],
+    def:'待建，把热度变成收益；依赖前面机制先把观众攒起来，顺序不能颠倒。' },
+  { id:'m7', name:'批量产能工作流（分镜复用 / 素材库）', short:'批量产能', status:'build', serves:['lz'],
+    def:'待建，让已经会画的人少走重复步骤，把两小时的活压缩到二十分钟。' },
+  { id:'m8', name:'创作过程留痕 / AI参与度透明标注',     short:'过程留痕', status:'build', serves:['aiq'],
+    def:'待建，把创作过程存下来、AI介入比例标出来，让"这是我做的"这句话经得起追问。' }
+];
+// 痛点标签：根需求"被看见"往下再拆一层——先是具体卡住的问题，再才谈解决方案
+const PAINPOINTS_DATA = [
+  { id:'pp_aud',  name:'要有观众',       serves:['bkj'],
+    def:'内容需要先有人看到，连观众都没有，"被看见"根本无从谈起。' },
+  { id:'pp_push', name:'书能被推送',     serves:['bkj'],
+    def:'作品需要被系统主动推荐/推送出去，而不是全靠运气被刷到。' },
+  { id:'pp_fb',   name:'能感受到用户反馈', serves:['bkj'],
+    def:'需要能实际感知到真实读者的反馈和互动，而不是发布之后就没了下文。' },
+  { id:'pp_data', name:'能看到数据变化', serves:['bkj'],
+    def:'需要看到浏览、点赞等数据随时间的变化，切实感知到作品确实被看见了。' }
+];
+const STAGE_OF_NEED = {kw:0, zc:1, zs:2, zj:2, bkj:3, hq:4, lz:1, gs:3, lh:4, rk:3, fx:3, hx:2, pm:0, qt:0, aiq:3};
+const STAGE_OF_PAINPOINT = {pp_aud:3, pp_push:3, pp_fb:3, pp_data:3}; // 都挂在"被看见"(stage 3)下面，跟它聚在一起
+const STAGE_OF_MECH = {m1:0, m2:1, m3:2, m4:2, m5:3, m6:4, m7:1, m8:3};
+const NEED_STRONG = 3; // 强度门槛：>=3才算这个画像"带来"了这个标签
+
+/* ================= LEFT SIDEBAR: 标签池(左1) + 关联绑定(左2) ================= */
+const TAGS = {};             // tagKey('cat:id') -> {id, name, cat, color?, status?}
+const RELATIONS = new Map(); // tagKey -> Set(tagKey)，双向存储（谁跟谁有关系），展示时按层级只往下筛
+const CAT_LEVEL = { persona:1, need:2, painpoint:3, mech:4 }; // 画像 → 根需求 → 痛点 → 解决方案
+let selectedTagKey = null;
+let customTagCounter = 0;
+const CUSTOM_TAGS = []; // 通过"+"新建的自定义标签 {cat,id,name,extra}，不在 *_DATA 数组里，需要单独持久化
+const SAVE_KEY = 'comicPersonaBoard_v1';
+
+function ensureRel(key){
+  if(!RELATIONS.has(key)) RELATIONS.set(key, new Set());
+  return RELATIONS.get(key);
+}
+function addRelation(a,b){ ensureRel(a).add(b); ensureRel(b).add(a); }
+function registerTag(cat, id, name, extra){
+  const key = cat+':'+id;
+  TAGS[key] = Object.assign({ id, name, cat }, extra);
+  ensureRel(key);
+  return key;
+}
+
+/* ============ 持久化：优先走后端 /api/board（跨设备/跨浏览器），失败自动退回 localStorage ============ */
+function loadLocalSnapshot(){
+  let raw;
+  try{ raw = localStorage.getItem(SAVE_KEY); }catch(e){ return null; }
+  if(!raw) return null;
+  let snap;
+  try{ snap = JSON.parse(raw); }catch(e){ return null; }
+  if(!snap || snap.v!==1) return null;
+  return applySnapshotData(snap);
+}
+function applySnapshotData(snap){
+  if(!snap || snap.v!==1) return null;
+  if(Array.isArray(snap.personasData)){ PERSONAS_DATA.length=0; PERSONAS_DATA.push(...snap.personasData); }
+  if(Array.isArray(snap.needsData)){ NEEDS_DATA.length=0; NEEDS_DATA.push(...snap.needsData); }
+  if(Array.isArray(snap.painpointsData)){ PAINPOINTS_DATA.length=0; PAINPOINTS_DATA.push(...snap.painpointsData); }
+  if(Array.isArray(snap.mechsData)){ MECHS_DATA.length=0; MECHS_DATA.push(...snap.mechsData); }
+  if(Array.isArray(snap.customTags)){ CUSTOM_TAGS.length=0; CUSTOM_TAGS.push(...snap.customTags); }
+  if(typeof snap.customTagCounter==='number') customTagCounter = snap.customTagCounter;
+  return snap;
+}
+async function fetchRemoteSnapshot(){
+  try{
+    const res = await fetch('/api/board', { cache:'no-store' });
+    if(res.status===204) return null; // 后端在线但还没存过任何东西
+    if(!res.ok) return null;          // 后端没配置存储（如 KV 未连接）等情况，静默降级
+    const data = await res.json();
+    return applySnapshotData(data);
+  }catch(e){ return null; } // 没网络/后端没启动，静默降级到 localStorage
+}
+let _pushTimer = null;
+function pushRemoteSnapshot(snapshot){
+  clearTimeout(_pushTimer);
+  _pushTimer = setTimeout(()=>{
+    fetch('/api/board', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify(snapshot)
+    }).catch(()=>{}); // 后端不可用也没关系，本地照常工作
+  }, 400);
+}
+async function loadSnapshot(){
+  const remote = await fetchRemoteSnapshot();
+  if(remote) return remote;
+  return loadLocalSnapshot();
+}
+function saveState(){
+  let snapshot;
+  try{
+    snapshot = {
+      v:1,
+      personasData: PERSONAS_DATA,
+      needsData: NEEDS_DATA,
+      painpointsData: PAINPOINTS_DATA,
+      mechsData: MECHS_DATA,
+      customTags: CUSTOM_TAGS,
+      customTagCounter,
+      relations: [...RELATIONS.entries()].map(([k,set])=>[k, [...set]]),
+      activePersonas: [...activePersonas.values()].map(n=>({id:n.ref.id, x:n.x, y:n.y})),
+      promotedNeedIds: [...promotedNeeds],
+      promotedPainpointIds: [...promotedPainpoints]
+    };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot));
+  }catch(e){ /* 本地存储不可用（隐私模式/容量满），静默跳过，不影响正常使用 */ }
+  if(snapshot) pushRemoteSnapshot(snapshot);
+}
+function buildAutoRelations(){
+  PERSONAS_DATA.forEach(p=>{
+    NEEDS_DATA.forEach(nd=>{
+      if(nd.s && nd.s[p.id] >= NEED_STRONG) addRelation('persona:'+p.id, 'need:'+nd.id);
+    });
+  });
+  PAINPOINTS_DATA.forEach(pp=>{
+    (pp.serves||[]).forEach(needId=>addRelation('need:'+needId, 'painpoint:'+pp.id));
+  });
+  MECHS_DATA.forEach(m=>{
+    (m.serves||[]).forEach(id=>{
+      // id 有可能是还没拆过痛点的"根需求"，也有可能是已经拆出来的"痛点"，两种都认
+      if(NEEDS_DATA.some(nd=>nd.id===id)) addRelation('need:'+id, 'mech:'+m.id);
+      else if(PAINPOINTS_DATA.some(pp=>pp.id===id)) addRelation('painpoint:'+id, 'mech:'+m.id);
+    });
+  });
+}
+
+/* 从这里开始整体包一层 async IIFE：先等后端/本地存档读回来，再往下建标签池、绑定关系、画板状态 */
+(async function initBoard(){
+
+const SAVED_SNAPSHOT = await loadSnapshot(); // 后端有存档优先用后端；没有再退回 localStorage；都没有就是全新状态
+
+PERSONAS_DATA.forEach(p=>registerTag('persona', p.id, p.name, { color:p.color }));
+NEEDS_DATA.forEach(nd=>registerTag('need', nd.id, nd.name, { concern:nd.concern }));
+PAINPOINTS_DATA.forEach(pp=>registerTag('painpoint', pp.id, pp.name, {}));
+MECHS_DATA.forEach(m=>registerTag('mech', m.id, m.short, { status:m.status }));
+CUSTOM_TAGS.forEach(t=>registerTag(t.cat, t.id, t.name, t.extra));
+
+// 有存档就还原存档里的绑定关系（含用户手动加/解绑的），没有存档才用"强度/serves"自动推算
+if(SAVED_SNAPSHOT && Array.isArray(SAVED_SNAPSHOT.relations)){
+  SAVED_SNAPSHOT.relations.forEach(([k, vals])=>{
+    if(!TAGS[k]) return;
+    ensureRel(k);
+    (vals||[]).forEach(v=>{ if(TAGS[v]) addRelation(k, v); });
+  });
+} else {
+  buildAutoRelations();
+}
+
+
+const relCircle = document.getElementById('relCircle');
+const relRelated = document.getElementById('relRelated');
+const trashZone = document.getElementById('trashZone');
+const poolBlocksEl = {
+  persona: document.getElementById('poolPersona'),
+  need: document.getElementById('poolNeed'),
+  painpoint: document.getElementById('poolPainpoint'),
+  mech: document.getElementById('poolMech')
+};
+
+function chipBaseClass(tag){
+  if(tag.cat==='need') return 'pool-chip need'+(tag.concern?' concern':'');
+  if(tag.cat==='painpoint') return 'pool-chip painpoint';
+  if(tag.cat==='mech') return 'pool-chip mech '+(tag.status||'build');
+  return 'pool-chip';
+}
+function applyChipColor(el, tag){
+  if(tag.cat==='persona'){
+    const c = tag.color || '#7c5cff';
+    el.style.background = `radial-gradient(circle at 35% 30%, ${c}, ${c}cc)`;
+  }
+}
+function makeGhost(chipEl, e){
+  const ghost = chipEl.cloneNode(true);
+  ghost.classList.add('drag-ghost');
+  const w = chipEl.offsetWidth || 56, h = chipEl.offsetHeight || 56;
+  ghost.style.width = w+'px'; ghost.style.height = h+'px';
+  ghost.style.left = (e.clientX - w/2)+'px'; ghost.style.top = (e.clientY - h/2)+'px';
+  document.body.appendChild(ghost);
+  ghost._w = w; ghost._h = h;
+  return ghost;
+}
+function pointInRect(x,y,rect){ return x>=rect.left && x<=rect.right && y>=rect.top && y<=rect.bottom; }
+
+function attachPoolDrag(chipEl, tagKey){
+  chipEl.addEventListener('pointerdown', e=>{
+    e.preventDefault();
+    const startX=e.clientX, startY=e.clientY;
+    let moved=false;
+    const ghost = makeGhost(chipEl, e);
+    let overCircle=false, overRelated=false, overCanvas=false, overTrash=false;
+    function onMove(ev){
+      if(Math.hypot(ev.clientX-startX, ev.clientY-startY)>4) moved=true;
+      ghost.style.left=(ev.clientX-ghost._w/2)+'px';
+      ghost.style.top=(ev.clientY-ghost._h/2)+'px';
+      overTrash = pointInRect(ev.clientX, ev.clientY, trashZone.getBoundingClientRect());
+      overCircle = !overTrash && pointInRect(ev.clientX, ev.clientY, relCircle.getBoundingClientRect());
+      overRelated = !overTrash && !overCircle && !!selectedTagKey && pointInRect(ev.clientX, ev.clientY, relRelated.getBoundingClientRect());
+      overCanvas = !overTrash && !overCircle && !overRelated && isOverCanvas(ev.clientX, ev.clientY);
+      relCircle.classList.toggle('drop-ready', overCircle);
+      relRelated.classList.toggle('drop-ready', overRelated);
+      canvasWrap.classList.toggle('drop-ready', overCanvas);
+      trashZone.classList.toggle('drop-ready', overTrash);
+    }
+    function onUp(ev){
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      ghost.remove();
+      relCircle.classList.remove('drop-ready');
+      relRelated.classList.remove('drop-ready');
+      canvasWrap.classList.remove('drop-ready');
+      trashZone.classList.remove('drop-ready');
+      if(!moved){ selectTag(tagKey); return; }
+      if(overTrash){ deleteTag(tagKey); return; }
+      if(overCircle){ selectTag(tagKey); return; }
+      if(overRelated && selectedTagKey!==tagKey){ bindTags(selectedTagKey, tagKey); return; }
+      if(overCanvas){ dropTagOnCanvas(tagKey, ev.clientX, ev.clientY); }
+    }
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  });
+}
+/* 把左边标签池里的画像/需求标签直接拖进右边画板，触发标签在画板上出现 */
+function dropTagOnCanvas(tagKey, clientX, clientY){
+  const tag = TAGS[tagKey];
+  if(!tag) return;
+  const rect = canvasWrap.getBoundingClientRect();
+  const x = clientX-rect.left, y = clientY-rect.top;
+  if(tag.cat==='persona' && PERSONAS_DATA.some(p=>p.id===tag.id)){
+    activatePersona(tag.id, x, y);
+  } else if(tag.cat==='need' && NEEDS_DATA.some(nd=>nd.id===tag.id)){
+    activateNeedDirect(tag.id, x, y);
+  } else if(tag.cat==='painpoint' && PAINPOINTS_DATA.some(pp=>pp.id===tag.id)){
+    activatePainpointDirect(tag.id, x, y);
+  }
+}
+/* 把标签彻底删除：标签池、关联关系、底层数据、画板上的节点全部一起清掉 */
+function deleteTag(tagKey){
+  const tag = TAGS[tagKey];
+  if(!tag) return;
+  if(!confirm(`删除标签"${tag.name}"？画板上如果正显示它，会被一并移除。`)) return;
+
+  // 1) 画板上如果正显示这个标签，先摘掉对应节点，避免留下孤儿节点
+  if(tag.cat==='persona' && activePersonas.has(tag.id)){
+    deactivatePersona(tag.id);
+  }
+  if(tag.cat==='need'){
+    if(visibleNeeds.has(tag.id)){ removeDom(visibleNeeds.get(tag.id)); visibleNeeds.delete(tag.id); }
+    promotedNeeds.delete(tag.id);
+  }
+  if(tag.cat==='painpoint'){
+    if(visiblePainpoints.has(tag.id)){ removeDom(visiblePainpoints.get(tag.id)); visiblePainpoints.delete(tag.id); }
+    promotedPainpoints.delete(tag.id);
+  }
+  if(tag.cat==='mech' && visibleMechs.has(tag.id)){
+    removeDom(visibleMechs.get(tag.id)); visibleMechs.delete(tag.id);
+  }
+
+  // 2) 从底层数据数组里也删掉，避免之后 syncTags 又把它重新算出来
+  if(tag.cat==='persona'){
+    const idx = PERSONAS_DATA.findIndex(p=>p.id===tag.id);
+    if(idx>=0) PERSONAS_DATA.splice(idx,1);
+  } else if(tag.cat==='need'){
+    const idx = NEEDS_DATA.findIndex(n=>n.id===tag.id);
+    if(idx>=0) NEEDS_DATA.splice(idx,1);
+    PAINPOINTS_DATA.forEach(pp=>{ pp.serves = pp.serves.filter(nid=>nid!==tag.id); });
+    MECHS_DATA.forEach(m=>{ m.serves = m.serves.filter(id=>id!==tag.id); });
+  } else if(tag.cat==='painpoint'){
+    const idx = PAINPOINTS_DATA.findIndex(p=>p.id===tag.id);
+    if(idx>=0) PAINPOINTS_DATA.splice(idx,1);
+    MECHS_DATA.forEach(m=>{ m.serves = m.serves.filter(id=>id!==tag.id); });
+  } else if(tag.cat==='mech'){
+    const idx = MECHS_DATA.findIndex(m=>m.id===tag.id);
+    if(idx>=0) MECHS_DATA.splice(idx,1);
+  }
+
+  // 2.5) 如果是通过"+"新建的自定义标签，也要从持久化列表里摘掉，避免刷新后又复活
+  const customIdx = CUSTOM_TAGS.findIndex(t=>t.cat===tag.cat && t.id===tag.id);
+  if(customIdx>=0) CUSTOM_TAGS.splice(customIdx,1);
+
+  // 3) 从标签池 / 关联关系里彻底移除
+  delete TAGS[tagKey];
+  RELATIONS.delete(tagKey);
+  RELATIONS.forEach(set=>set.delete(tagKey));
+  if(selectedTagKey===tagKey) selectedTagKey=null;
+
+  // 4) 刷新左侧标签池、关联面板和画板
+  renderPool();
+  renderRelCircle();
+  renderRelated();
+  syncTags();
+}
+
+
+function renderPool(){
+  Object.keys(poolBlocksEl).forEach(cat=>{
+    const el = poolBlocksEl[cat];
+    el.innerHTML='';
+    Object.keys(TAGS).filter(k=>TAGS[k].cat===cat).forEach(key=>{
+      const tag = TAGS[key];
+      const chip = document.createElement('div');
+      chip.className = chipBaseClass(tag) + (selectedTagKey===key ? ' selected' : '');
+      applyChipColor(chip, tag);
+      chip.textContent = tag.name;
+      attachPoolDrag(chip, key);
+      el.appendChild(chip);
+    });
+  });
+}
+
+function selectTag(key){
+  selectedTagKey = key;
+  renderPool();
+  renderRelCircle();
+  renderRelated();
+}
+function renderRelCircle(){
+  relCircle.className = 'relbar-circle';
+  relCircle.removeAttribute('style');
+  if(!selectedTagKey){ relCircle.textContent = '拖标签到这里'; return; }
+  const tag = TAGS[selectedTagKey];
+  relCircle.classList.add('filled', 'cat-'+tag.cat);
+  if(tag.cat==='mech') relCircle.classList.add(tag.status||'build');
+  if(tag.cat==='need' && tag.concern) relCircle.classList.add('concern');
+  applyChipColor(relCircle, tag);
+  relCircle.textContent = tag.name;
+}
+function renderRelated(){
+  relRelated.innerHTML='';
+  if(!selectedTagKey){
+    relRelated.innerHTML = '<div class="relbar-empty">先点一个标签，或把标签拖进上面的圆里</div>';
+    return;
+  }
+  const selTag = TAGS[selectedTagKey];
+  const selLevel = CAT_LEVEL[selTag.cat] || 0;
+  const set = ensureRel(selectedTagKey);
+  // 只展示层级更低的"下级"关联标签（画像→需求→方案），已关联的上级标签不在这里显示
+  const children = [...set].filter(key=>{
+    const t = TAGS[key];
+    return t && (CAT_LEVEL[t.cat] || 0) > selLevel;
+  });
+  if(children.length===0){
+    relRelated.innerHTML = '<div class="relbar-empty">还没有关联标签。<br>从左边标签池拖一个标签到这里完成绑定。</div>';
+    return;
+  }
+  children.forEach(key=>{
+    const tag = TAGS[key];
+    const chip = document.createElement('div');
+    chip.className = chipBaseClass(tag);
+    applyChipColor(chip, tag);
+    chip.textContent = tag.name;
+    attachRelatedDrag(chip, key);
+    relRelated.appendChild(chip);
+  });
+}
+function bindTags(a,b){
+  if(!a || !b || a===b) return;
+  const ta = TAGS[a], tb = TAGS[b];
+  if(!ta || !tb) return;
+  if((CAT_LEVEL[tb.cat]||0) <= (CAT_LEVEL[ta.cat]||0)) return; // 关联区只接受"下级"标签，同级/上级标签拖进来不生效
+  addRelation(a,b);
+  renderRelated();
+  saveState();
+}
+function unbindTags(a,b){
+  if(!a || !b) return;
+  const setA = RELATIONS.get(a); if(setA) setA.delete(b);
+  const setB = RELATIONS.get(b); if(setB) setB.delete(a);
+  renderRelated();
+  saveState();
+}
+/* 关联标签块里的标签：点击=选中下钻；拖出这个区域（且不是拖进垃圾桶）=解除跟当前选中标签的绑定 */
+function attachRelatedDrag(chipEl, tagKey){
+  chipEl.style.cursor='grab';
+  chipEl.addEventListener('pointerdown', e=>{
+    e.preventDefault();
+    const startX=e.clientX, startY=e.clientY;
+    let moved=false;
+    const ghost = makeGhost(chipEl, e);
+    let overTrash=false, overBox=false;
+    function onMove(ev){
+      if(Math.hypot(ev.clientX-startX, ev.clientY-startY)>4) moved=true;
+      ghost.style.left=(ev.clientX-ghost._w/2)+'px';
+      ghost.style.top=(ev.clientY-ghost._h/2)+'px';
+      overTrash = pointInRect(ev.clientX, ev.clientY, trashZone.getBoundingClientRect());
+      overBox = !overTrash && pointInRect(ev.clientX, ev.clientY, relRelated.getBoundingClientRect());
+      trashZone.classList.toggle('drop-ready', overTrash);
+      ghost.classList.toggle('unbind-armed', moved && !overTrash && !overBox);
+    }
+    function onUp(){
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      ghost.remove();
+      trashZone.classList.remove('drop-ready');
+      if(!moved){ selectTag(tagKey); return; }
+      if(overTrash){ deleteTag(tagKey); return; }
+      if(!overBox){ unbindTags(selectedTagKey, tagKey); }
+    }
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  });
+}
+
+document.querySelectorAll('.pool-add').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const cat = btn.dataset.cat;
+    const name = (prompt('新标签名称：')||'').trim();
+    if(!name) return;
+    const id = 'custom'+(++customTagCounter);
+    const extra = cat==='mech' ? { status:'build' } : {};
+    registerTag(cat, id, name, extra);
+    CUSTOM_TAGS.push({ cat, id, name, extra });
+    renderPool();
+    saveState();
+  });
+});
+
+/* ================= STATE ================= */
+const activePersonas = new Map();   // id -> physics node
+const visibleNeeds = new Map();     // id -> physics node
+const visiblePainpoints = new Map(); // id -> physics node
+const visibleMechs = new Map();     // id -> physics node
+const expandedPetals = new Set();
+const promotedNeeds = new Set(); // 被用户手动拖动过、已"钉住"的需求标签，钉住之后才会展开它的痛点标签（如果没有痛点，直接展开方案）
+const promotedPainpoints = new Set(); // 被用户手动拖动过、已"钉住"的痛点标签，钉住之后才会展开它的方案标签
+const pendingSpawnPos = {}; // 从左边标签池直接把需求/痛点标签拖进画板时，记录精确落点，供 syncTags 创建节点时使用
+let focusNode = null;
+let nodes = [];
+let nodeById = {};
+let edges = [];
+
+const canvasWrap = document.getElementById('canvasWrap');
+const svg = document.getElementById('edgeSvg');
+const layer = document.getElementById('nodesLayer');
+const canvasHint = document.getElementById('canvasHint');
+const domById = {};
+let W=900, H=640;
+function measure(){ const r = canvasWrap.getBoundingClientRect(); W=r.width; H=r.height; }
+measure();
+window.addEventListener('resize', measure);
+
+function isOverCanvas(cx,cy){
+  const r = canvasWrap.getBoundingClientRect();
+  return cx>=r.left && cx<=r.right && cy>=r.top && cy<=r.bottom;
+}
+function averagePos(list){
+  if(!list.length) return {x:W/2+((Math.random()-0.5)*80), y:H/2+((Math.random()-0.5)*80)};
+  let x=0,y=0; list.forEach(n=>{x+=n.x;y+=n.y;});
+  return {x:x/list.length, y:y/list.length};
+}
+
+/* ================= DOM NODE CREATE/REMOVE ================= */
+function createDom(n){
+  const el=document.createElement('div');
+  el.dataset.id=n.id;
+  let label='';
+  if(n.type==='persona'){
+    el.className='node node-persona spawn-in';
+    el.style.background=`radial-gradient(circle at 35% 30%, ${n.ref.color}, ${n.ref.color}cc)`;
+    label=n.ref.name;
+  } else if(n.type==='need'){
+    el.className='node node-need spawn-in'+(n.ref.concern?' concern':'');
+    label=n.ref.name;
+  } else if(n.type==='painpoint'){
+    el.className='node node-painpoint spawn-in';
+    label=n.ref.name;
+  } else {
+    el.className='node node-mech '+n.ref.status+' spawn-in';
+    el.style.color = n.ref.status==='have' ? '#2fbf71' : '#ff7a45';
+    label=n.ref.short;
+  }
+  el.innerHTML=`<span>${label}</span>`;
+  layer.appendChild(el);
+  domById[n.id]=el;
+  requestAnimationFrame(()=>requestAnimationFrame(()=>el.classList.remove('spawn-in')));
+
+  if(n.type==='persona') bindPersonaDrag(n, el);
+  else bindTagDrag(n, el);
+}
+function removeDom(n){
+  const el=domById[n.id];
+  if(!el) return;
+  el.style.opacity='0';
+  el.style.transform += ' scale(0.2)';
+  setTimeout(()=>{ el.remove(); }, 320);
+  delete domById[n.id];
+}
+
+/* ================= DRAG: ACTIVE PERSONA NODE ================= */
+function bindPersonaDrag(n, el){
+  el.addEventListener('pointerdown', e=>{
+    e.preventDefault();
+    const rect = canvasWrap.getBoundingClientRect();
+    n.dragging=true; n.moved=false;
+    n.downX=e.clientX; n.downY=e.clientY;
+    el.setPointerCapture && el.setPointerCapture(e.pointerId);
+    function onMove(ev){
+      const dx=ev.clientX-n.downX, dy=ev.clientY-n.downY;
+      if(Math.hypot(dx,dy)>4) n.moved=true;
+      n.x = ev.clientX-rect.left; n.y = ev.clientY-rect.top;
+      n.vx=0; n.vy=0;
+      canvasWrap.classList.toggle('drop-remove', !isOverCanvas(ev.clientX, ev.clientY));
+    }
+    function onUp(ev){
+      n.dragging=false;
+      window.removeEventListener('pointermove',onMove);
+      window.removeEventListener('pointerup',onUp);
+      canvasWrap.classList.remove('drop-remove');
+      if(n.moved && !isOverCanvas(ev.clientX, ev.clientY)){
+        deactivatePersona(n.ref.id);
+        return;
+      }
+      if(!n.moved){ onNodeClick(n); }
+    }
+    window.addEventListener('pointermove',onMove);
+    window.addEventListener('pointerup',onUp);
+  });
+}
+
+/* ================= DRAG: NEED / PAINPOINT / MECH NODE ================= */
+/* 需求、痛点标签：拖一下就会"钉住"（升级成锚点），把它下面一层的标签放出来；机制标签这次是终点，拖动只挪位置 */
+function bindTagDrag(n, el){
+  el.addEventListener('pointerdown', e=>{
+    e.preventDefault();
+    const rect = canvasWrap.getBoundingClientRect();
+    n.dragging=true; n.moved=false;
+    n.downX=e.clientX; n.downY=e.clientY;
+    el.setPointerCapture && el.setPointerCapture(e.pointerId);
+    function onMove(ev){
+      const dx=ev.clientX-n.downX, dy=ev.clientY-n.downY;
+      if(Math.hypot(dx,dy)>4) n.moved=true;
+      n.x = ev.clientX-rect.left; n.y = ev.clientY-rect.top;
+      n.vx=0; n.vy=0;
+      if((n.type==='need' || n.type==='painpoint') && n.pinned){
+        canvasWrap.classList.toggle('drop-remove', !isOverCanvas(ev.clientX, ev.clientY));
+      }
+    }
+    function onUp(ev){
+      n.dragging=false;
+      window.removeEventListener('pointermove',onMove);
+      window.removeEventListener('pointerup',onUp);
+      canvasWrap.classList.remove('drop-remove');
+      if(!n.moved){ onNodeClick(n); return; }
+      if(n.type==='need' || n.type==='painpoint'){
+        const pset = n.type==='need' ? promotedNeeds : promotedPainpoints;
+        if(n.pinned && !isOverCanvas(ev.clientX, ev.clientY)){
+          // 把已钉住的标签拖出画板：撤销钉住；如果下面已经没有支撑它的东西，会直接消失
+          pset.delete(n.ref.id);
+          n.pinned = false;
+          syncTags();
+          return;
+        }
+        if(!n.pinned){
+          n.pinned = true;
+          pset.add(n.ref.id);
+          syncTags();
+        }
+      }
+    }
+    window.addEventListener('pointermove',onMove);
+    window.addEventListener('pointerup',onUp);
+  });
+}
+
+/* ================= ACTIVATE / DEACTIVATE ================= */
+function activatePersona(pid, x, y){
+  if(activePersonas.has(pid)) return;
+  const p = PERSONAS_DATA.find(d=>d.id===pid);
+  const n = { id:'p_'+pid, type:'persona', ref:p, r:46, massInv:0.28, pinned:true, x, y, vx:0, vy:0 };
+  activePersonas.set(pid, n);
+  createDom(n);
+  syncTags();
+}
+function deactivatePersona(pid){
+  if(!activePersonas.has(pid)) return;
+  const n = activePersonas.get(pid);
+  removeDom(n);
+  activePersonas.delete(pid);
+  expandedPetals.delete(pid);
+  if(focusNode==='p_'+pid) focusNode=null;
+  syncTags();
+}
+
+/* 直接从左边标签池把需求标签拖进画板：不经过画像，立刻钉住并展开方案 */
+function activateNeedDirect(needId, x, y){
+  if(visibleNeeds.has(needId)) return;
+  promotedNeeds.add(needId);
+  pendingSpawnPos[needId] = {x, y};
+  syncTags();
+}
+/* 直接从左边标签池把痛点标签拖进画板：跳过画像和需求，立刻钉住并展开方案 */
+function activatePainpointDirect(ppId, x, y){
+  if(visiblePainpoints.has(ppId)) return;
+  promotedPainpoints.add(ppId);
+  pendingSpawnPos[ppId] = {x, y};
+  syncTags();
+}
+
+
+/* ================= SYNC TAGS (needs + painpoints + mechs appear/disappear/resize) ================= */
+function syncTags(){
+  const needInfo = {};
+  NEEDS_DATA.forEach(nd=>{
+    const contributors=[];
+    activePersonas.forEach((pnode,pid)=>{
+      const s=nd.s[pid];
+      if(s>=NEED_STRONG) contributors.push({pid, strength:s});
+    });
+    needInfo[nd.id]={ contributors, visible:contributors.length>0, glow:contributors.length>=2,
+      sumStrength: contributors.reduce((a,c)=>a+c.strength,0) };
+  });
+
+  NEEDS_DATA.forEach(nd=>{
+    const info=needInfo[nd.id];
+    const exists = info.visible || promotedNeeds.has(nd.id);
+    if(exists && !visibleNeeds.has(nd.id)){
+      let spawn, jitter;
+      if(pendingSpawnPos[nd.id]){
+        spawn = pendingSpawnPos[nd.id]; delete pendingSpawnPos[nd.id]; jitter = 0;
+      } else {
+        spawn = averagePos(info.contributors.map(c=>activePersonas.get(c.pid))); jitter = 30;
+      }
+      const n={ id:'n_'+nd.id, type:'need', ref:nd, massInv:0.55, pinned:promotedNeeds.has(nd.id),
+        x:spawn.x+(Math.random()-0.5)*jitter, y:spawn.y+(Math.random()-0.5)*jitter, vx:0, vy:0,
+        r:20+info.sumStrength*3.2, info };
+      visibleNeeds.set(nd.id, n);
+      createDom(n);
+    } else if(!exists && visibleNeeds.has(nd.id)){
+      removeDom(visibleNeeds.get(nd.id));
+      visibleNeeds.delete(nd.id);
+      promotedNeeds.delete(nd.id);
+      if(focusNode==='n_'+nd.id) focusNode=null;
+    } else if(exists){
+      const n=visibleNeeds.get(nd.id);
+      n.r = 20+info.sumStrength*3.2;
+      n.info = info;
+      n.pinned = promotedNeeds.has(nd.id);
+    }
+  });
+
+  // 三级以上标签不能同时出现：画板上只要还有画像，就只显示"画像↔需求"这一层；
+  // 只有画像全部撤走、画板里只剩需求标签时，才解锁"需求↔痛点"这一层；痛点被钉住后再解锁"痛点↔方案"
+  const soloNeedMode = activePersonas.size===0;
+
+  const painpointInfo = {};
+  PAINPOINTS_DATA.forEach(pp=>{
+    const contributingNeeds = soloNeedMode ? pp.serves.filter(nid=>visibleNeeds.has(nid) && promotedNeeds.has(nid)) : [];
+    painpointInfo[pp.id] = { contributingNeeds, visible: contributingNeeds.length>0, glow: contributingNeeds.length>=2 };
+  });
+
+  PAINPOINTS_DATA.forEach(pp=>{
+    const info = painpointInfo[pp.id];
+    const exists = info.visible || promotedPainpoints.has(pp.id);
+    if(exists && !visiblePainpoints.has(pp.id)){
+      let spawn, jitter;
+      if(pendingSpawnPos[pp.id]){
+        spawn = pendingSpawnPos[pp.id]; delete pendingSpawnPos[pp.id]; jitter = 0;
+      } else {
+        spawn = averagePos(info.contributingNeeds.map(nid=>visibleNeeds.get(nid))); jitter = 26;
+      }
+      const n={ id:'pp_'+pp.id, type:'painpoint', ref:pp, massInv:0.7, pinned:promotedPainpoints.has(pp.id),
+        x:spawn.x+(Math.random()-0.5)*jitter, y:spawn.y+(Math.random()-0.5)*jitter, vx:0, vy:0,
+        r:20+pp.serves.length*3, info };
+      visiblePainpoints.set(pp.id, n);
+      createDom(n);
+    } else if(!exists && visiblePainpoints.has(pp.id)){
+      removeDom(visiblePainpoints.get(pp.id));
+      visiblePainpoints.delete(pp.id);
+      promotedPainpoints.delete(pp.id);
+      if(focusNode==='pp_'+pp.id) focusNode=null;
+    } else if(exists){
+      const n=visiblePainpoints.get(pp.id);
+      n.info = info;
+      n.pinned = promotedPainpoints.has(pp.id);
+    }
+  });
+
+  // 方案的 serves 数组里，每一项可能是"还没拆过痛点的根需求"，也可能是"已经拆出来的痛点"——只要其中一个已钉住且可见就命中
+  function isPinnedVisible(id){
+    if(visibleNeeds.has(id) && promotedNeeds.has(id)) return true;
+    if(visiblePainpoints.has(id) && promotedPainpoints.has(id)) return true;
+    return false;
+  }
+  const mechInfo = {};
+  MECHS_DATA.forEach(m=>{
+    const contributing = soloNeedMode ? m.serves.filter(id=>isPinnedVisible(id)) : [];
+    mechInfo[m.id] = { contributing, visible: contributing.length>0, glow: contributing.length>=2 };
+  });
+
+  MECHS_DATA.forEach(m=>{
+    const info = mechInfo[m.id];
+    if(info.visible && !visibleMechs.has(m.id)){
+      const servingNodes = info.contributing.map(id=>visibleNeeds.get(id) || visiblePainpoints.get(id)).filter(Boolean);
+      const spawn = averagePos(servingNodes);
+      const n={ id:'m_'+m.id, type:'mech', ref:m, massInv:0.85, r:20+m.serves.length*3, pinned:false,
+        x:spawn.x+(Math.random()-0.5)*24, y:spawn.y+(Math.random()-0.5)*24, vx:0, vy:0, glow:info.glow };
+      visibleMechs.set(m.id, n);
+      createDom(n);
+    } else if(!info.visible && visibleMechs.has(m.id)){
+      removeDom(visibleMechs.get(m.id));
+      visibleMechs.delete(m.id);
+      if(focusNode==='m_'+m.id) focusNode=null;
+    } else if(info.visible){
+      const n = visibleMechs.get(m.id);
+      n.glow = info.glow;
+      n.info = info;
+    }
+  });
+
+  edges = [];
+  activePersonas.forEach((pnode,pid)=>{
+    NEEDS_DATA.forEach(nd=>{
+      const s=nd.s[pid];
+      if(s>=NEED_STRONG && visibleNeeds.has(nd.id)){
+        const p = PERSONAS_DATA.find(x=>x.id===pid);
+        edges.push({ source:'p_'+pid, target:'n_'+nd.id, strength:s,
+          restLength:220-s*28, k:0.02, baseWidth:1+s*1.3, baseAlpha:0.18+(s/5)*0.55, color:p.color });
+      }
+    });
+  });
+  PAINPOINTS_DATA.forEach(pp=>{
+    if(!visiblePainpoints.has(pp.id)) return;
+    pp.serves.forEach(nid=>{
+      if(visibleNeeds.has(nid)){
+        edges.push({ source:'n_'+nid, target:'pp_'+pp.id, strength:3,
+          restLength:88, k:0.035, baseWidth:2.4, baseAlpha:0.32, color:'#8b90a3' });
+      }
+    });
+  });
+  MECHS_DATA.forEach(m=>{
+    if(!visibleMechs.has(m.id)) return;
+    m.serves.forEach(id=>{
+      if(visibleNeeds.has(id)){
+        edges.push({ source:'n_'+id, target:'m_'+m.id, strength:3,
+          restLength:88, k:0.035, baseWidth:2.4, baseAlpha:0.32, color:'#8b90a3' });
+      } else if(visiblePainpoints.has(id)){
+        edges.push({ source:'pp_'+id, target:'m_'+m.id, strength:3,
+          restLength:80, k:0.035, baseWidth:2.4, baseAlpha:0.32, color:'#8b90a3' });
+      }
+    });
+  });
+
+  nodes = [...activePersonas.values(), ...visibleNeeds.values(), ...visiblePainpoints.values(), ...visibleMechs.values()];
+  nodeById = {}; nodes.forEach(n=>nodeById[n.id]=n);
+
+  canvasHint.style.display = (activePersonas.size===0 && visibleNeeds.size===0 && visiblePainpoints.size===0) ? 'block' : 'none';
+  updateRadar(needInfo);
+  updatePainpointRadar(painpointInfo);
+  updateMechRadar(mechInfo);
+  applyGlowStyles();
+  updateDetailPanel();
+  saveState();
+}
+
+
+/* ================= PHYSICS ================= */
+const REPEL_K = 22000;
+const DAMPING = 0.83;
+const STAGE_K = 0.006;
+const CENTER_K_T = 0.0015;
+
+function stageTargetY(stage){ return H*0.14 + (stage/4)*H*0.72; }
+
+function tick(){
+  nodes.forEach(n=>{ n.fx=0; n.fy=0; });
+  for(let i=0;i<nodes.length;i++){
+    for(let j=i+1;j<nodes.length;j++){
+      const a=nodes[i], b=nodes[j];
+      let dx=b.x-a.x, dy=b.y-a.y;
+      let distSq=dx*dx+dy*dy; if(distSq<400) distSq=400;
+      const dist=Math.sqrt(distSq);
+      let force=REPEL_K/distSq;
+      const minDist=a.r+b.r+14;
+      if(dist<minDist) force*=1.6;
+      const fx=(dx/dist)*force, fy=(dy/dist)*force;
+      a.fx-=fx; a.fy-=fy; b.fx+=fx; b.fy+=fy;
+    }
+  }
+  edges.forEach(e=>{
+    const a=nodeById[e.source], b=nodeById[e.target];
+    if(!a||!b) return;
+    let dx=b.x-a.x, dy=b.y-a.y;
+    let dist=Math.sqrt(dx*dx+dy*dy)||0.01;
+    const force=(dist-e.restLength)*e.k;
+    const fx=(dx/dist)*force, fy=(dy/dist)*force;
+    a.fx+=fx; a.fy+=fy; b.fx-=fx; b.fy-=fy;
+  });
+  const cx=W/2;
+  nodes.forEach(n=>{
+    if(!n.pinned){
+      const stage = n.type==='need' ? STAGE_OF_NEED[n.ref.id] : n.type==='painpoint' ? STAGE_OF_PAINPOINT[n.ref.id] : STAGE_OF_MECH[n.ref.id];
+      const isConcern = n.type==='need' && n.ref.concern; // 回避型需求不走 0→4 成长funnel，统一下沉到底部"顾虑带"
+      const targetY = isConcern ? H*0.90 : stageTargetY(stage);
+      n.fx+=(cx-n.x)*CENTER_K_T;
+      n.fy+=(targetY-n.y)*STAGE_K;
+    }
+  });
+  nodes.forEach(n=>{
+    if(n.dragging) return;
+    // 锚点（画像、已被拖动钉住的需求）只能被手动拖动，不会被引力/斥力自动带着漂移
+    if(n.pinned){ n.vx=0; n.vy=0; return; }
+    n.vx=(n.vx+n.fx*n.massInv)*DAMPING;
+    n.vy=(n.vy+n.fy*n.massInv)*DAMPING;
+    const sp=Math.hypot(n.vx,n.vy), maxV=13;
+    if(sp>maxV){ n.vx*=maxV/sp; n.vy*=maxV/sp; }
+    n.x+=n.vx; n.y+=n.vy;
+    const m=n.r+8;
+    if(n.x<m){n.x=m;n.vx*=-0.3;} if(n.x>W-m){n.x=W-m;n.vx*=-0.3;}
+    if(n.y<m){n.y=m;n.vy*=-0.3;} if(n.y>H-m){n.y=H-m;n.vy*=-0.3;}
+  });
+  render();
+  requestAnimationFrame(tick);
+}
+
+function render(){
+  nodes.forEach(n=>{
+    const el=domById[n.id]; if(!el) return;
+    el.style.width=el.style.height=(n.r*2)+'px';
+    el.style.transform=`translate(${n.x-n.r}px, ${n.y-n.r}px)`;
+  });
+  let lines='';
+  edges.forEach(e=>{
+    const a=nodeById[e.source], b=nodeById[e.target];
+    if(!a||!b) return;
+    const op = Math.min(a.curOp!=null?a.curOp:1, b.curOp!=null?b.curOp:1) * e.baseAlpha;
+    lines+=`<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="${e.color}" stroke-width="${e.baseWidth}" stroke-opacity="${op.toFixed(2)}" stroke-linecap="round"/>`;
+  });
+  svg.innerHTML=lines;
+  renderPetals();
+}
+
+/* ================= FOCUS / GLOW ================= */
+function onNodeClick(n){
+  if(n.type==='persona'){
+    if(expandedPetals.has(n.ref.id)) expandedPetals.delete(n.ref.id);
+    else expandedPetals.add(n.ref.id);
+    focusNode='p_'+n.ref.id;
+  } else {
+    focusNode = (focusNode===n.id) ? null : n.id;
+  }
+  applyGlowStyles();
+  updateDetailPanel();
+}
+canvasWrap.addEventListener('pointerdown', e=>{
+  if(e.target===canvasWrap || e.target===svg){
+    focusNode=null; applyGlowStyles(); updateDetailPanel();
+  }
+});
+
+function applyGlowStyles(){
+  const fn = focusNode ? nodeById[focusNode] : null;
+  nodes.forEach(n=>{
+    const el=domById[n.id]; if(!el) return;
+    el.classList.remove('glow');
+    let op=1;
+    if(fn && fn.type!=='persona'){
+      if(n.id===focusNode) op=1;
+      else if(fn.type==='need'){
+        if(n.type==='persona'){ const s=fn.ref.s[n.ref.id]; op = s>=NEED_STRONG?1:0.25; }
+        else if(n.type==='painpoint'){ op = n.ref.serves.includes(fn.ref.id)?1:0.2; }
+        else if(n.type==='mech'){ op = n.ref.serves.includes(fn.ref.id)?1:0.2; }
+        else op=0.2;
+      } else if(fn.type==='painpoint'){
+        if(n.type==='need'){ op = fn.ref.serves.includes(n.ref.id)?1:0.2; }
+        else if(n.type==='mech'){ op = n.ref.serves.includes(fn.ref.id)?1:0.2; }
+        else if(n.type==='persona'){
+          const relevant = fn.ref.serves.some(nid=>{ const nd=NEEDS_DATA.find(x=>x.id===nid); return nd && nd.s[n.ref.id]>=NEED_STRONG; });
+          op = relevant?1:0.25;
+        } else op=0.2;
+      } else if(fn.type==='mech'){
+        if(n.type==='need' || n.type==='painpoint'){ op = fn.ref.serves.includes(n.ref.id)?1:0.2; }
+        else if(n.type==='persona'){
+          const directNeedIds = fn.ref.serves.filter(id=>NEEDS_DATA.some(nd=>nd.id===id));
+          const viaPainpointNeedIds = fn.ref.serves
+            .map(id=>PAINPOINTS_DATA.find(pp=>pp.id===id))
+            .filter(Boolean)
+            .flatMap(pp=>pp.serves);
+          const allNeedIds = [...directNeedIds, ...viaPainpointNeedIds];
+          const strengths = allNeedIds.map(nid=>{ const nd=NEEDS_DATA.find(x=>x.id===nid); return nd ? (nd.s[n.ref.id]||0) : 0; });
+          const maxS = strengths.length ? Math.max(...strengths) : 0;
+          op = maxS>=NEED_STRONG?1:0.25;
+        } else op=0.2;
+      }
+    }
+    n.curOp=op;
+    el.style.opacity=op;
+    el.classList.toggle('pinned', !!n.pinned && (n.type==='need' || n.type==='painpoint'));
+    if((n.type==='need' || n.type==='painpoint') && n.info && n.info.glow) el.classList.add('glow');
+    if(n.type==='mech' && n.glow) el.classList.add('glow');
+    if(focusNode===n.id) el.classList.add('glow');
+    updateCountBadge(n, el);
+  });
+}
+
+/* 节点连接数徽标：需求/痛点=有多少上一层的东西强需要它；方案=有多少已钉住的需求/痛点带出它 */
+function updateCountBadge(n, el){
+  let badge = el.querySelector('.cnt-badge');
+  if(!badge){ badge=document.createElement('span'); badge.className='cnt-badge'; el.appendChild(badge); }
+  let count = 0;
+  if(n.type==='need' && n.info) count = n.info.contributors.length;
+  else if(n.type==='painpoint' && n.info) count = n.info.contributingNeeds.length;
+  else if(n.type==='mech' && n.info) count = n.info.contributing.length;
+  if(count>0){
+    badge.textContent = '×'+count;
+    badge.style.display='flex';
+    badge.classList.toggle('hot', count>=2);
+  } else {
+    badge.style.display='none';
+  }
+}
+
+/* ================= PETALS ================= */
+function renderPetals(){
+  document.querySelectorAll('.petal').forEach(p=>p.remove());
+  expandedPetals.forEach(pid=>{
+    const pnode = activePersonas.get(pid);
+    if(!pnode) return;
+    const n=DIMS_DATA.length;
+    DIMS_DATA.forEach((d,i)=>{
+      const angle=(i/n)*Math.PI*2 - Math.PI/2;
+      const radius=pnode.r+56;
+      const x=pnode.x+Math.cos(angle)*radius, y=pnode.y+Math.sin(angle)*radius;
+      const el=document.createElement('div');
+      el.className='petal';
+      el.style.left=x+'px'; el.style.top=y+'px';
+      el.innerHTML=`<b>${d.name}</b>`;
+      layer.appendChild(el);
+    });
+  });
+}
+
+/* ================= RADAR PANEL ================= */
+/* 通用查找：给一个 id，不管它是"根需求"还是"痛点"，都能找到对应的 {name, def} */
+function lookupTierNode(id){
+  return NEEDS_DATA.find(x=>x.id===id) || PAINPOINTS_DATA.find(x=>x.id===id);
+}
+
+function updateRadar(needInfo){
+  const box=document.getElementById('radarList');
+  const rows = NEEDS_DATA.map(nd=>({nd, info:needInfo[nd.id]})).filter(r=>r.info.visible)
+    .sort((a,b)=> b.info.contributors.length-a.info.contributors.length || b.info.sumStrength-a.info.sumStrength);
+  if(!rows.length){
+    box.innerHTML='<div class="radar-empty">画板里还没有标签。把左边的画像拖进画板，它的强需求标签会自动出现；拖入第二个重叠的画像，标签会变大发光。</div>';
+    return;
+  }
+  box.innerHTML = rows.map(r=>{
+    const dots = r.info.contributors.map(c=>{
+      const p=PERSONAS_DATA.find(x=>x.id===c.pid);
+      return `<span class="rdot" style="background:${p.color}" title="${p.name} ${c.strength}分"></span>`;
+    }).join('');
+    const hot = r.info.contributors.length>=2;
+    const isPinned = promotedNeeds.has(r.nd.id);
+    const soloMode = activePersonas.size===0;
+    let mechHint;
+    if(isPinned && soloMode){
+      const pps = PAINPOINTS_DATA.filter(pp=>pp.serves.includes(r.nd.id) && visiblePainpoints.has(pp.id));
+      const directMechs = MECHS_DATA.filter(m=>m.serves.includes(r.nd.id) && visibleMechs.has(m.id));
+      const items = [
+        ...pps.map(pp=>`<span class="rmech painpoint">${pp.name}</span>`),
+        ...directMechs.map(m=>`<span class="rmech ${m.status}">${m.short}</span>`)
+      ];
+      mechHint = items.join('');
+    } else if(isPinned && !soloMode){
+      mechHint = `<span class="rmech" style="opacity:.6">移出所有画像才能展开下一层</span>`;
+    } else {
+      mechHint = `<span class="rmech" style="opacity:.6">拖动它展开下一层 →</span>`;
+    }
+    return `<div class="radar-item ${hot?'hot':''}">
+      <div class="ri-top"><span class="ri-name">${isPinned?'📌 ':''}${r.nd.name}</span>${hot?'<span class="ri-badge">🔥重叠 x'+r.info.contributors.length+'</span>':''}</div>
+      <div class="ri-dots">${dots}</div>
+      <div class="ri-mechs">${mechHint}</div>
+    </div>`;
+  }).join('');
+}
+
+function updatePainpointRadar(painpointInfo){
+  const box=document.getElementById('painpointRadarList');
+  const rows = PAINPOINTS_DATA.map(pp=>({pp, info:painpointInfo[pp.id]})).filter(r=>r.info.visible)
+    .sort((a,b)=> b.info.contributingNeeds.length-a.info.contributingNeeds.length);
+  if(!rows.length){
+    box.innerHTML = activePersonas.size>0
+      ? '<div class="radar-empty">画板里还有画像，痛点雷达暂时不会显示。把所有画像都拖出画板，只留需求标签，钉住的需求才会展开它的痛点。</div>'
+      : '<div class="radar-empty">还没有痛点标签。先拖出一些需求标签，再伸手拖一下其中一个（钉住它），如果它拆过痛点，痛点就会出现在这里。</div>';
+    return;
+  }
+  box.innerHTML = rows.map(r=>{
+    const names = r.info.contributingNeeds.map(nid=>NEEDS_DATA.find(x=>x.id===nid).name).join(' + ');
+    const hot = r.info.contributingNeeds.length>=2;
+    const isPinned = promotedPainpoints.has(r.pp.id);
+    return `<div class="radar-item ${hot?'hot':''}">
+      <div class="ri-top"><span class="ri-name">${isPinned?'📌 ':''}${r.pp.name}</span>
+        ${hot?'<span class="ri-badge">🔥重叠 x'+r.info.contributingNeeds.length+'</span>':''}</div>
+      <div class="ri-mechs" style="margin-top:6px;color:var(--sub);font-size:11.5px;">来自：${names}</div>
+    </div>`;
+  }).join('');
+}
+
+function updateMechRadar(mechInfo){
+  const box=document.getElementById('mechRadarList');
+  const rows = MECHS_DATA.map(m=>({m, info:mechInfo[m.id]})).filter(r=>r.info.visible)
+    .sort((a,b)=> b.info.contributing.length-a.info.contributing.length);
+  if(!rows.length){
+    box.innerHTML = activePersonas.size>0
+      ? '<div class="radar-empty">画板里还有画像，方案雷达暂时不会显示。这两层是互斥的——把所有画像都拖出画板，只留需求/痛点标签，钉住其中一个才会解锁方案。</div>'
+      : '<div class="radar-empty">还没有方案标签。先钉住一个需求（或它拆出来的痛点），对应的方案就会出现在这里。</div>';
+    return;
+  }
+  box.innerHTML = rows.map(r=>{
+    const names = r.info.contributing.map(id=>{ const node=lookupTierNode(id); return node?node.name:id; }).join(' + ');
+    const hot = r.info.contributing.length>=2;
+    return `<div class="radar-item ${hot?'hot':''}">
+      <div class="ri-top"><span class="ri-name">${r.m.short}</span>
+        <span class="dp-badge ${r.m.status}" style="margin:0">${r.m.status==='have'?'已有':'待建'}</span>
+        ${hot?'<span class="ri-badge">🔥重叠 x'+r.info.contributing.length+'</span>':''}</div>
+      <div class="ri-mechs" style="margin-top:6px;color:var(--sub);font-size:11.5px;">来自：${names}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ================= DETAIL PANEL ================= */
+const dpEmpty=document.getElementById('dpEmpty');
+const dpContent=document.getElementById('dpContent');
+function barColor(v){ return v>=4?'#ff7a45':v>=3?'#e0a730':v>=2?'#7c5cff':'#5c6275'; }
+
+function updateDetailPanel(){
+  if(!focusNode || !nodeById[focusNode]){
+    dpEmpty.style.display='block'; dpContent.style.display='none'; return;
+  }
+  dpEmpty.style.display='none'; dpContent.style.display='block';
+  const fn=nodeById[focusNode];
+
+  if(fn.type==='persona'){
+    const p=fn.ref;
+    const nd=[...NEEDS_DATA].sort((a,b)=>b.s[p.id]-a.s[p.id]);
+    let html=`<h2 style="color:${p.color}">${p.name}</h2><div class="dp-def">${p.tag}</div>
+      <div class="dp-sec-title">L1 · 需求强度排序</div>`;
+    nd.forEach(n=>{
+      html+=`<div class="dp-bar-row"><span class="nm">${n.name}</span>
+        <div class="bar"><i style="width:${n.s[p.id]/5*100}%;background:${barColor(n.s[p.id])}"></i></div>
+        <span class="vv">${n.s[p.id]}</span></div>`;
+    });
+    html+=`<div class="dp-sec-title">L2 · 八个细分特征（已在画板上花瓣展开）</div>`;
+    DIMS_DATA.forEach(d=>{ html+=`<div class="dp-dim"><b>${d.name}</b><span>${d.val[p.id]}</span></div>`; });
+    dpContent.innerHTML=html;
+    return;
+  }
+
+  if(fn.type==='need'){
+    const n=fn.ref;
+    let html=`<h2>${fn.pinned?'📌 ':''}${n.name}</h2><div class="dp-def">${n.def}</div>
+      <div class="dp-sec-title">当前画板里，谁需要它</div>`;
+    fn.info.contributors.slice().sort((a,b)=>b.strength-a.strength).forEach(c=>{
+      const p=PERSONAS_DATA.find(x=>x.id===c.pid);
+      html+=`<div class="dp-bar-row"><span class="nm">${p.name}</span>
+        <div class="bar"><i style="width:${c.strength/5*100}%;background:${p.color}"></i></div>
+        <span class="vv">${c.strength}</span></div>`;
+    });
+    if(fn.info.contributors.length>=2){
+      html+=`<div class="dp-def" style="color:var(--orange)">这是 ${fn.info.contributors.length} 个当前画像共同的强需求——高重叠、值得优先做。</div>`;
+    }
+    if(fn.pinned){
+      if(activePersonas.size===0){
+        const childPainpoints = PAINPOINTS_DATA.filter(pp=>pp.serves.includes(n.id) && visiblePainpoints.has(pp.id));
+        const directMechs = MECHS_DATA.filter(m=>m.serves.includes(n.id) && visibleMechs.has(m.id));
+        if(childPainpoints.length){
+          html+=`<div class="dp-sec-title">已钉住 · 展开的痛点</div>`;
+          childPainpoints.forEach(pp=>{
+            html+=`<div class="dp-mechitem"><b>${pp.name}</b><div class="d">${pp.def}</div></div>`;
+          });
+        }
+        if(directMechs.length){
+          html+=`<div class="dp-sec-title">已钉住 · 直接展开的方案</div>`;
+          directMechs.forEach(m=>{
+            html+=`<div class="dp-mechitem"><b>${m.name}</b>
+              <span class="dp-badge ${m.status}">${m.status==='have'?'已有':'待建'}</span>
+              <div class="d">${m.def}</div></div>`;
+          });
+        }
+        if(!childPainpoints.length && !directMechs.length){
+          html+=`<div class="dp-def" style="color:var(--sub)">已钉住，但它暂时还没有拆出痛点、也没有方案直接挂在下面。</div>`;
+        }
+      } else {
+        html+=`<div class="dp-def" style="color:var(--sub)">已钉住，但画板里还有画像——下一层暂时不会显示。把所有画像都拖出画板，只留需求标签，才能看到它对应的痛点/方案。</div>`;
+      }
+    } else {
+      html+=`<div class="dp-def" style="color:var(--sub)">这个标签还在浮动。伸手拖一下它（哪怕挪一点位置），就能把它钉住并展开下一层。</div>`;
+    }
+    dpContent.innerHTML=html;
+    return;
+  }
+
+  if(fn.type==='painpoint'){
+    const pp=fn.ref;
+    let html=`<h2>${fn.pinned?'📌 ':''}${pp.name}</h2><div class="dp-def">${pp.def}</div>
+      <div class="dp-sec-title">当前画板里，哪个需求带出了它</div>`;
+    (fn.info ? fn.info.contributingNeeds : pp.serves.filter(nid=>promotedNeeds.has(nid))).forEach(nid=>{
+      const nd=NEEDS_DATA.find(x=>x.id===nid);
+      if(nd) html+=`<div class="dp-dim"><b>${nd.name}</b><span>${nd.def}</span></div>`;
+    });
+    if(fn.pinned){
+      const childMechs = MECHS_DATA.filter(m=>m.serves.includes(pp.id) && visibleMechs.has(m.id));
+      if(childMechs.length){
+        html+=`<div class="dp-sec-title">已钉住 · 展开的方案</div>`;
+        childMechs.forEach(m=>{
+          html+=`<div class="dp-mechitem"><b>${m.name}</b>
+            <span class="dp-badge ${m.status}">${m.status==='have'?'已有':'待建'}</span>
+            <div class="d">${m.def}</div></div>`;
+        });
+      } else {
+        html+=`<div class="dp-def" style="color:var(--sub)">已钉住，但还没有方案挂在这个痛点下面——留白等着补方案。</div>`;
+      }
+    } else {
+      html+=`<div class="dp-def" style="color:var(--sub)">这个标签还在浮动。伸手拖一下它，就能把它钉住并展开对应的方案。</div>`;
+    }
+    dpContent.innerHTML=html;
+    return;
+  }
+
+  if(fn.type==='mech'){
+    const m=fn.ref;
+    let html=`<h2>${m.name}</h2>
+      <div><span class="dp-badge ${m.status}">${m.status==='have'?'已有':'待建'}</span></div>
+      <div class="dp-def">${m.def}</div>
+      <div class="dp-sec-title">当前画板里，哪些已钉住的需求/痛点带出了它</div>`;
+    (fn.info ? fn.info.contributing : m.serves.filter(id=>promotedNeeds.has(id)||promotedPainpoints.has(id))).forEach(id=>{
+      const node=lookupTierNode(id);
+      if(node) html+=`<div class="dp-dim"><b>${node.name}</b><span>${node.def}</span></div>`;
+    });
+    if(fn.info && fn.info.contributing.length>=2){
+      html+=`<div class="dp-def" style="color:var(--orange)">这个方案同时接住了 ${fn.info.contributing.length} 个上级标签——是高杠杆的优先建设项。</div>`;
+    }
+    dpContent.innerHTML=html;
+  }
+}
+
+/* ================= TOOLBAR ================= */
+document.getElementById('clearBoardBtn').addEventListener('click', ()=>{
+  [...activePersonas.keys()].forEach(pid=>deactivatePersona(pid));
+  if(promotedNeeds.size || promotedPainpoints.size){
+    promotedNeeds.clear(); // 连已经"钉住"的需求/痛点标签（及它们带出的下一层标签）一起清掉，不留次级标签
+    promotedPainpoints.clear();
+    syncTags();
+  }
+});
+document.getElementById('resetAllBtn').addEventListener('click', ()=>{
+  if(!confirm('这会清空本地和云端保存的所有自定义标签、关联绑定和画板记录，恢复到初始默认状态。确定吗？')) return;
+  try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
+  fetch('/api/board', { method:'DELETE' }).catch(()=>{}).finally(()=>{ location.reload(); });
+});
+
+/* ================= GLOSSARY ================= */
+const drawer=document.getElementById('glossaryDrawer');
+const mask=document.getElementById('glossaryMask');
+function renderGlossary(){
+  document.getElementById('gL1').innerHTML = NEEDS_DATA.map(n=>`<div class="g-item"><b>${n.name}</b><span>${n.def}</span></div>`).join('');
+  document.getElementById('gL15').innerHTML = PAINPOINTS_DATA.map(pp=>{
+    const parents = pp.serves.map(nid=>{ const nd=NEEDS_DATA.find(x=>x.id===nid); return nd?nd.name:nid; }).join(' + ');
+    return `<div class="g-item"><b>${pp.name}</b><span>${pp.def}（属于：${parents}）</span></div>`;
+  }).join('');
+  document.getElementById('gL2').innerHTML = DIMS_DATA.map(d=>`<div class="g-item"><b>${d.name}</b><span>${d.q||''}</span></div>`).join('');
+}
+function openGlossary(){ renderGlossary(); drawer.classList.add('open'); mask.classList.add('open'); }
+function closeGlossary(){ drawer.classList.remove('open'); mask.classList.remove('open'); }
+document.getElementById('openGlossary2').addEventListener('click', openGlossary);
+document.getElementById('closeGlossary').addEventListener('click', closeGlossary);
+mask.addEventListener('click', closeGlossary);
+
+/* ================= START ================= */
+renderPool();
+renderRelCircle();
+renderRelated();
+if(SAVED_SNAPSHOT){
+  (SAVED_SNAPSHOT.activePersonas||[]).forEach(p=>{
+    if(PERSONAS_DATA.some(pd=>pd.id===p.id)) activatePersona(p.id, p.x, p.y);
+  });
+  (SAVED_SNAPSHOT.promotedNeedIds||[]).forEach(nid=>{
+    if(NEEDS_DATA.some(nd=>nd.id===nid)) promotedNeeds.add(nid);
+  });
+  (SAVED_SNAPSHOT.promotedPainpointIds||[]).forEach(ppid=>{
+    if(PAINPOINTS_DATA.some(pp=>pp.id===ppid)) promotedPainpoints.add(ppid);
+  });
+}
+syncTags();
+requestAnimationFrame(tick);
+
+})(); // initBoard 结束
+</script>
+</body>
+</html>
