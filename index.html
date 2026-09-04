@@ -176,30 +176,13 @@
   .side{width:380px;flex:none;background:var(--panel);border-left:1px solid var(--line);
     padding:20px 20px 30px;overflow-y:auto;}
   .side h2{font-size:15px;margin-bottom:4px;}
-  .radar-title{font-size:12px;color:var(--orange);letter-spacing:.5px;font-weight:700;
-    text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:6px;}
-  .radar-list{margin-bottom:8px;}
-  .radar-empty{color:var(--sub);font-size:12.8px;line-height:1.8;
-    background:#ffffff06;border:1px solid #ffffff14;border-radius:10px;padding:14px;}
-  .radar-item{background:#ffffff06;border:1px solid #ffffff14;border-radius:10px;padding:10px 12px;margin-bottom:8px;}
-  .radar-item.hot{border-color:#ff7a4550;background:#ff7a4512;}
-  .ri-top{display:flex;justify-content:space-between;align-items:center;}
-  .ri-name{font-size:13.5px;font-weight:700;}
-  .ri-badge{font-size:10.5px;font-weight:700;color:var(--orange);background:#ff7a4520;border:1px solid #ff7a4550;
-    border-radius:20px;padding:1px 8px;}
-  .ri-dots{display:flex;gap:5px;margin-top:6px;}
-  .rdot{width:11px;height:11px;border-radius:50%;display:inline-block;}
-  .ri-mechs{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;}
-  .rmech{font-size:10.5px;padding:2px 7px;border-radius:7px;background:#ffffff08;border:1px solid #ffffff20;}
-  .rmech.have{border-color:#2fbf7150;color:var(--green);}
-  .rmech.build{border-color:#ff7a4550;color:var(--orange);}
-  .rmech.painpoint{border-color:var(--amber);color:var(--amber);}
 
   .dp-divider{height:1px;background:var(--line);margin:18px 0;}
   .dp-empty{color:var(--sub);font-size:12.8px;line-height:1.8;}
   .dp-badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;margin:2px 4px 2px 0;}
   .dp-badge.have{background:#2fbf7118;color:var(--green);border:1px solid #2fbf7140;}
   .dp-badge.build{background:#ff7a4518;color:var(--orange);border:1px solid #ff7a4540;}
+  .dp-badge.concern{background:#ff4d6a18;color:#ff4d6a;border:1px solid #ff4d6a40;}
   .dp-def{font-size:12.8px;color:var(--sub);margin:9px 0 14px;line-height:1.7;}
   .dp-sec-title{font-size:11.5px;color:var(--orange);letter-spacing:.5px;font-weight:700;margin:14px 0 8px;text-transform:uppercase;}
   .dp-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:7px;font-size:12.5px;}
@@ -275,7 +258,7 @@
   <div class="relbar">
     <div class="relbar-topzone">
       <div class="relbar-circle" id="relCircle">拖标签到这里</div>
-      <div class="relbar-hint">点击左边标签，或把标签拖进这个圆里选中它</div>
+      <div class="relbar-hint">把标签拖进这个圆里，选中它来编辑绑定关系（点击标签是看详情，不会选中到这里）</div>
     </div>
     <div class="relbar-related-title">关联标签 · 拖标签池里的标签进来绑定，拖出这个区域取消绑定</div>
     <div class="relbar-related-block" id="relRelated"></div>
@@ -301,17 +284,8 @@
   </div>
 
   <div class="side" id="sidePanel">
-    <div class="radar-title">🎯 需求雷达 · 画像重叠</div>
-    <div class="radar-list" id="radarList"></div>
-    <div class="dp-divider"></div>
-    <div class="radar-title">🧷 痛点雷达 · 需求重叠（画板里没有画像时才生效）</div>
-    <div class="radar-list" id="painpointRadarList"></div>
-    <div class="dp-divider"></div>
-    <div class="radar-title">🧩 方案雷达 · 需求/痛点重叠（需要先钉住上一层才生效）</div>
-    <div class="radar-list" id="mechRadarList"></div>
-    <div class="dp-divider"></div>
-    <h2>详情面板</h2>
-    <div id="dpEmpty" class="dp-empty">点击画板里任意一个圆看详情：画像的需求侧写、标签被谁需要、机制服务谁。拖动一个需求/痛点标签可以把它"钉住"，展开它下面一层。</div>
+    <h2>标签详情</h2>
+    <div id="dpEmpty" class="dp-empty">点击左边标签池 / 关联标签，或点击画板里任意一个圆，看它的详细信息。</div>
     <div id="dpContent" style="display:none;"></div>
     <button class="glossary-btn2" id="openGlossary2">📖 打开完整标签图鉴</button>
   </div>
@@ -609,7 +583,7 @@ function attachPoolDrag(chipEl, tagKey){
       relRelated.classList.remove('drop-ready');
       canvasWrap.classList.remove('drop-ready');
       trashZone.classList.remove('drop-ready');
-      if(!moved){ selectTag(tagKey); return; }
+      if(!moved){ showTagDetail(tagKey); return; }
       if(overTrash){ deleteTag(tagKey); return; }
       if(overCircle){ selectTag(tagKey); return; }
       if(overRelated && selectedTagKey!==tagKey){ bindTags(selectedTagKey, tagKey); return; }
@@ -682,6 +656,7 @@ function deleteTag(tagKey){
   RELATIONS.delete(tagKey);
   RELATIONS.forEach(set=>set.delete(tagKey));
   if(selectedTagKey===tagKey) selectedTagKey=null;
+  if(detailTagKey===tagKey) detailTagKey=null;
 
   // 4) 刷新左侧标签池、关联面板和画板
   renderPool();
@@ -768,7 +743,7 @@ function unbindTags(a,b){
   renderRelated();
   saveState();
 }
-/* 关联标签块里的标签：点击=选中下钻；拖出这个区域（且不是拖进垃圾桶）=解除跟当前选中标签的绑定 */
+/* 关联标签块里的标签：点击=在右栏展示详情；拖出这个区域（且不是拖进垃圾桶）=解除跟当前选中标签的绑定 */
 function attachRelatedDrag(chipEl, tagKey){
   chipEl.style.cursor='grab';
   chipEl.addEventListener('pointerdown', e=>{
@@ -791,7 +766,7 @@ function attachRelatedDrag(chipEl, tagKey){
       window.removeEventListener('pointerup', onUp);
       ghost.remove();
       trashZone.classList.remove('drop-ready');
-      if(!moved){ selectTag(tagKey); return; }
+      if(!moved){ showTagDetail(tagKey); return; }
       if(overTrash){ deleteTag(tagKey); return; }
       if(!overBox){ unbindTags(selectedTagKey, tagKey); }
     }
@@ -824,6 +799,7 @@ const promotedNeeds = new Set(); // 被用户手动拖动过、已"钉住"的需
 const promotedPainpoints = new Set(); // 被用户手动拖动过、已"钉住"的痛点标签，钉住之后才会展开它的方案标签
 const pendingSpawnPos = {}; // 从左边标签池直接把需求/痛点标签拖进画板时，记录精确落点，供 syncTags 创建节点时使用
 let focusNode = null;
+let detailTagKey = null; // 左侧标签池/关联标签"点击"时展示在右栏的标签，跟画板节点的 focusNode 是两套独立状态
 let nodes = [];
 let nodeById = {};
 let edges = [];
@@ -1143,9 +1119,6 @@ function syncTags(){
   nodeById = {}; nodes.forEach(n=>nodeById[n.id]=n);
 
   canvasHint.style.display = (activePersonas.size===0 && visibleNeeds.size===0 && visiblePainpoints.size===0) ? 'block' : 'none';
-  updateRadar(needInfo);
-  updatePainpointRadar(painpointInfo);
-  updateMechRadar(mechInfo);
   applyGlowStyles();
   updateDetailPanel();
   saveState();
@@ -1230,6 +1203,7 @@ function render(){
 
 /* ================= FOCUS / GLOW ================= */
 function onNodeClick(n){
+  detailTagKey = null; // 画板节点聚焦优先，清掉左侧点击留下的详情状态
   if(n.type==='persona'){
     if(expandedPetals.has(n.ref.id)) expandedPetals.delete(n.ref.id);
     else expandedPetals.add(n.ref.id);
@@ -1242,7 +1216,7 @@ function onNodeClick(n){
 }
 canvasWrap.addEventListener('pointerdown', e=>{
   if(e.target===canvasWrap || e.target===svg){
-    focusNode=null; applyGlowStyles(); updateDetailPanel();
+    focusNode=null; detailTagKey=null; applyGlowStyles(); updateDetailPanel();
   }
 });
 
@@ -1328,208 +1302,81 @@ function renderPetals(){
   });
 }
 
-/* ================= RADAR PANEL ================= */
-/* 通用查找：给一个 id，不管它是"根需求"还是"痛点"，都能找到对应的 {name, def} */
-function lookupTierNode(id){
-  return NEEDS_DATA.find(x=>x.id===id) || PAINPOINTS_DATA.find(x=>x.id===id);
-}
-
-function updateRadar(needInfo){
-  const box=document.getElementById('radarList');
-  const rows = NEEDS_DATA.map(nd=>({nd, info:needInfo[nd.id]})).filter(r=>r.info.visible)
-    .sort((a,b)=> b.info.contributors.length-a.info.contributors.length || b.info.sumStrength-a.info.sumStrength);
-  if(!rows.length){
-    box.innerHTML='<div class="radar-empty">画板里还没有标签。把左边的画像拖进画板，它的强需求标签会自动出现；拖入第二个重叠的画像，标签会变大发光。</div>';
-    return;
-  }
-  box.innerHTML = rows.map(r=>{
-    const dots = r.info.contributors.map(c=>{
-      const p=PERSONAS_DATA.find(x=>x.id===c.pid);
-      return `<span class="rdot" style="background:${p.color}" title="${p.name} ${c.strength}分"></span>`;
-    }).join('');
-    const hot = r.info.contributors.length>=2;
-    const isPinned = promotedNeeds.has(r.nd.id);
-    const soloMode = activePersonas.size===0;
-    let mechHint;
-    if(isPinned && soloMode){
-      const pps = PAINPOINTS_DATA.filter(pp=>pp.serves.includes(r.nd.id) && visiblePainpoints.has(pp.id));
-      const directMechs = MECHS_DATA.filter(m=>m.serves.includes(r.nd.id) && visibleMechs.has(m.id));
-      const items = [
-        ...pps.map(pp=>`<span class="rmech painpoint">${pp.name}</span>`),
-        ...directMechs.map(m=>`<span class="rmech ${m.status}">${m.short}</span>`)
-      ];
-      mechHint = items.join('');
-    } else if(isPinned && !soloMode){
-      mechHint = `<span class="rmech" style="opacity:.6">移出所有画像才能展开下一层</span>`;
-    } else {
-      mechHint = `<span class="rmech" style="opacity:.6">拖动它展开下一层 →</span>`;
-    }
-    return `<div class="radar-item ${hot?'hot':''}">
-      <div class="ri-top"><span class="ri-name">${isPinned?'📌 ':''}${r.nd.name}</span>${hot?'<span class="ri-badge">🔥重叠 x'+r.info.contributors.length+'</span>':''}</div>
-      <div class="ri-dots">${dots}</div>
-      <div class="ri-mechs">${mechHint}</div>
-    </div>`;
-  }).join('');
-}
-
-function updatePainpointRadar(painpointInfo){
-  const box=document.getElementById('painpointRadarList');
-  const rows = PAINPOINTS_DATA.map(pp=>({pp, info:painpointInfo[pp.id]})).filter(r=>r.info.visible)
-    .sort((a,b)=> b.info.contributingNeeds.length-a.info.contributingNeeds.length);
-  if(!rows.length){
-    box.innerHTML = activePersonas.size>0
-      ? '<div class="radar-empty">画板里还有画像，痛点雷达暂时不会显示。把所有画像都拖出画板，只留需求标签，钉住的需求才会展开它的痛点。</div>'
-      : '<div class="radar-empty">还没有痛点标签。先拖出一些需求标签，再伸手拖一下其中一个（钉住它），如果它拆过痛点，痛点就会出现在这里。</div>';
-    return;
-  }
-  box.innerHTML = rows.map(r=>{
-    const names = r.info.contributingNeeds.map(nid=>NEEDS_DATA.find(x=>x.id===nid).name).join(' + ');
-    const hot = r.info.contributingNeeds.length>=2;
-    const isPinned = promotedPainpoints.has(r.pp.id);
-    return `<div class="radar-item ${hot?'hot':''}">
-      <div class="ri-top"><span class="ri-name">${isPinned?'📌 ':''}${r.pp.name}</span>
-        ${hot?'<span class="ri-badge">🔥重叠 x'+r.info.contributingNeeds.length+'</span>':''}</div>
-      <div class="ri-mechs" style="margin-top:6px;color:var(--sub);font-size:11.5px;">来自：${names}</div>
-    </div>`;
-  }).join('');
-}
-
-function updateMechRadar(mechInfo){
-  const box=document.getElementById('mechRadarList');
-  const rows = MECHS_DATA.map(m=>({m, info:mechInfo[m.id]})).filter(r=>r.info.visible)
-    .sort((a,b)=> b.info.contributing.length-a.info.contributing.length);
-  if(!rows.length){
-    box.innerHTML = activePersonas.size>0
-      ? '<div class="radar-empty">画板里还有画像，方案雷达暂时不会显示。这两层是互斥的——把所有画像都拖出画板，只留需求/痛点标签，钉住其中一个才会解锁方案。</div>'
-      : '<div class="radar-empty">还没有方案标签。先钉住一个需求（或它拆出来的痛点），对应的方案就会出现在这里。</div>';
-    return;
-  }
-  box.innerHTML = rows.map(r=>{
-    const names = r.info.contributing.map(id=>{ const node=lookupTierNode(id); return node?node.name:id; }).join(' + ');
-    const hot = r.info.contributing.length>=2;
-    return `<div class="radar-item ${hot?'hot':''}">
-      <div class="ri-top"><span class="ri-name">${r.m.short}</span>
-        <span class="dp-badge ${r.m.status}" style="margin:0">${r.m.status==='have'?'已有':'待建'}</span>
-        ${hot?'<span class="ri-badge">🔥重叠 x'+r.info.contributing.length+'</span>':''}</div>
-      <div class="ri-mechs" style="margin-top:6px;color:var(--sub);font-size:11.5px;">来自：${names}</div>
-    </div>`;
-  }).join('');
-}
-
-/* ================= DETAIL PANEL ================= */
+/* ================= DETAIL PANEL：右栏现在只做一件事——展示当前选中标签的详情 ================= */
 const dpEmpty=document.getElementById('dpEmpty');
 const dpContent=document.getElementById('dpContent');
 function barColor(v){ return v>=4?'#ff7a45':v>=3?'#e0a730':v>=2?'#7c5cff':'#5c6275'; }
 
-function updateDetailPanel(){
-  if(!focusNode || !nodeById[focusNode]){
-    dpEmpty.style.display='block'; dpContent.style.display='none'; return;
-  }
+/* 给一个 tagKey('cat:id')，找到它背后完整的数据对象（画像/需求/痛点/方案）；自定义标签找不到就 ref:null */
+function findTagRef(tagKey){
+  const tag = TAGS[tagKey];
+  if(!tag) return null;
+  let ref = null;
+  if(tag.cat==='persona') ref = PERSONAS_DATA.find(p=>p.id===tag.id);
+  else if(tag.cat==='need') ref = NEEDS_DATA.find(n=>n.id===tag.id);
+  else if(tag.cat==='painpoint') ref = PAINPOINTS_DATA.find(p=>p.id===tag.id);
+  else if(tag.cat==='mech') ref = MECHS_DATA.find(m=>m.id===tag.id);
+  return { tag, ref };
+}
+
+/* 统一渲染：画像 = 简介 + 1-5打分 两个模块；其它标签 = 只有简介一个模块 */
+function renderDetailFor(cat, ref, tagMeta){
   dpEmpty.style.display='none'; dpContent.style.display='block';
-  const fn=nodeById[focusNode];
+  const name = (ref && ref.name) || (tagMeta && tagMeta.name) || '';
+  const color = (ref && ref.color) || (tagMeta && tagMeta.color) || null;
 
-  if(fn.type==='persona'){
-    const p=fn.ref;
-    const nd=[...NEEDS_DATA].sort((a,b)=>b.s[p.id]-a.s[p.id]);
-    let html=`<h2 style="color:${p.color}">${p.name}</h2><div class="dp-def">${p.tag}</div>
-      <div class="dp-sec-title">L1 · 需求强度排序</div>`;
-    nd.forEach(n=>{
-      html+=`<div class="dp-bar-row"><span class="nm">${n.name}</span>
-        <div class="bar"><i style="width:${n.s[p.id]/5*100}%;background:${barColor(n.s[p.id])}"></i></div>
-        <span class="vv">${n.s[p.id]}</span></div>`;
-    });
-    html+=`<div class="dp-sec-title">L2 · 八个细分特征（已在画板上花瓣展开）</div>`;
-    DIMS_DATA.forEach(d=>{ html+=`<div class="dp-dim"><b>${d.name}</b><span>${d.val[p.id]}</span></div>`; });
-    dpContent.innerHTML=html;
-    return;
-  }
-
-  if(fn.type==='need'){
-    const n=fn.ref;
-    let html=`<h2>${fn.pinned?'📌 ':''}${n.name}</h2><div class="dp-def">${n.def}</div>
-      <div class="dp-sec-title">当前画板里，谁需要它</div>`;
-    fn.info.contributors.slice().sort((a,b)=>b.strength-a.strength).forEach(c=>{
-      const p=PERSONAS_DATA.find(x=>x.id===c.pid);
-      html+=`<div class="dp-bar-row"><span class="nm">${p.name}</span>
-        <div class="bar"><i style="width:${c.strength/5*100}%;background:${p.color}"></i></div>
-        <span class="vv">${c.strength}</span></div>`;
-    });
-    if(fn.info.contributors.length>=2){
-      html+=`<div class="dp-def" style="color:var(--orange)">这是 ${fn.info.contributors.length} 个当前画像共同的强需求——高重叠、值得优先做。</div>`;
-    }
-    if(fn.pinned){
-      if(activePersonas.size===0){
-        const childPainpoints = PAINPOINTS_DATA.filter(pp=>pp.serves.includes(n.id) && visiblePainpoints.has(pp.id));
-        const directMechs = MECHS_DATA.filter(m=>m.serves.includes(n.id) && visibleMechs.has(m.id));
-        if(childPainpoints.length){
-          html+=`<div class="dp-sec-title">已钉住 · 展开的痛点</div>`;
-          childPainpoints.forEach(pp=>{
-            html+=`<div class="dp-mechitem"><b>${pp.name}</b><div class="d">${pp.def}</div></div>`;
-          });
-        }
-        if(directMechs.length){
-          html+=`<div class="dp-sec-title">已钉住 · 直接展开的方案</div>`;
-          directMechs.forEach(m=>{
-            html+=`<div class="dp-mechitem"><b>${m.name}</b>
-              <span class="dp-badge ${m.status}">${m.status==='have'?'已有':'待建'}</span>
-              <div class="d">${m.def}</div></div>`;
-          });
-        }
-        if(!childPainpoints.length && !directMechs.length){
-          html+=`<div class="dp-def" style="color:var(--sub)">已钉住，但它暂时还没有拆出痛点、也没有方案直接挂在下面。</div>`;
-        }
-      } else {
-        html+=`<div class="dp-def" style="color:var(--sub)">已钉住，但画板里还有画像——下一层暂时不会显示。把所有画像都拖出画板，只留需求标签，才能看到它对应的痛点/方案。</div>`;
-      }
+  if(cat==='persona'){
+    let html = `<h2${color?` style="color:${color}"`:''}>${name}</h2>`;
+    html += `<div class="dp-def">${ref ? ref.tag : '自定义画像，还没有简介。'}</div>`;
+    html += `<div class="dp-sec-title">价值打分 · 对每条根需求的强度（1-5）</div>`;
+    if(ref){
+      [...NEEDS_DATA].sort((a,b)=>(b.s[ref.id]||0)-(a.s[ref.id]||0)).forEach(n=>{
+        const v = n.s[ref.id]||0;
+        html += `<div class="dp-bar-row"><span class="nm">${n.name}</span>
+          <div class="bar"><i style="width:${v/5*100}%;background:${barColor(v)}"></i></div>
+          <span class="vv">${v}</span></div>`;
+      });
     } else {
-      html+=`<div class="dp-def" style="color:var(--sub)">这个标签还在浮动。伸手拖一下它（哪怕挪一点位置），就能把它钉住并展开下一层。</div>`;
+      html += `<div class="dp-def" style="color:var(--sub)">自定义画像，还没有打分数据。</div>`;
     }
-    dpContent.innerHTML=html;
+    dpContent.innerHTML = html;
     return;
   }
 
-  if(fn.type==='painpoint'){
-    const pp=fn.ref;
-    let html=`<h2>${fn.pinned?'📌 ':''}${pp.name}</h2><div class="dp-def">${pp.def}</div>
-      <div class="dp-sec-title">当前画板里，哪个需求带出了它</div>`;
-    (fn.info ? fn.info.contributingNeeds : pp.serves.filter(nid=>promotedNeeds.has(nid))).forEach(nid=>{
-      const nd=NEEDS_DATA.find(x=>x.id===nid);
-      if(nd) html+=`<div class="dp-dim"><b>${nd.name}</b><span>${nd.def}</span></div>`;
-    });
-    if(fn.pinned){
-      const childMechs = MECHS_DATA.filter(m=>m.serves.includes(pp.id) && visibleMechs.has(m.id));
-      if(childMechs.length){
-        html+=`<div class="dp-sec-title">已钉住 · 展开的方案</div>`;
-        childMechs.forEach(m=>{
-          html+=`<div class="dp-mechitem"><b>${m.name}</b>
-            <span class="dp-badge ${m.status}">${m.status==='have'?'已有':'待建'}</span>
-            <div class="d">${m.def}</div></div>`;
-        });
-      } else {
-        html+=`<div class="dp-def" style="color:var(--sub)">已钉住，但还没有方案挂在这个痛点下面——留白等着补方案。</div>`;
-      }
-    } else {
-      html+=`<div class="dp-def" style="color:var(--sub)">这个标签还在浮动。伸手拖一下它，就能把它钉住并展开对应的方案。</div>`;
-    }
-    dpContent.innerHTML=html;
+  // need / painpoint / mech：只有简介
+  let html = `<h2>${name}</h2>`;
+  if(cat==='mech' && ref){
+    html += `<div><span class="dp-badge ${ref.status}">${ref.status==='have'?'已有':'待建'}</span></div>`;
+  }
+  if(cat==='need' && ((ref && ref.concern) || (tagMeta && tagMeta.concern))){
+    html += `<div><span class="dp-badge concern">顾虑 · 回避型</span></div>`;
+  }
+  html += `<div class="dp-def">${ref ? ref.def : '自定义标签，还没有简介。'}</div>`;
+  dpContent.innerHTML = html;
+}
+
+/* 左侧标签池 / 关联标签"点击"（非拖拽）：只影响右栏展示，不改变左2的绑定结构、不影响画板发光聚焦 */
+function showTagDetail(tagKey){
+  const found = findTagRef(tagKey);
+  if(!found) return;
+  focusNode = null; // 让画板发光回到中性状态，避免跟左侧点的标签"打架"
+  detailTagKey = tagKey;
+  applyGlowStyles();
+  updateDetailPanel();
+}
+
+function updateDetailPanel(){
+  // 画板节点聚焦优先；没有聚焦节点时，看左侧是否点了标签
+  if(focusNode && nodeById[focusNode]){
+    const fn = nodeById[focusNode];
+    renderDetailFor(fn.type, fn.ref, null);
     return;
   }
-
-  if(fn.type==='mech'){
-    const m=fn.ref;
-    let html=`<h2>${m.name}</h2>
-      <div><span class="dp-badge ${m.status}">${m.status==='have'?'已有':'待建'}</span></div>
-      <div class="dp-def">${m.def}</div>
-      <div class="dp-sec-title">当前画板里，哪些已钉住的需求/痛点带出了它</div>`;
-    (fn.info ? fn.info.contributing : m.serves.filter(id=>promotedNeeds.has(id)||promotedPainpoints.has(id))).forEach(id=>{
-      const node=lookupTierNode(id);
-      if(node) html+=`<div class="dp-dim"><b>${node.name}</b><span>${node.def}</span></div>`;
-    });
-    if(fn.info && fn.info.contributing.length>=2){
-      html+=`<div class="dp-def" style="color:var(--orange)">这个方案同时接住了 ${fn.info.contributing.length} 个上级标签——是高杠杆的优先建设项。</div>`;
-    }
-    dpContent.innerHTML=html;
+  if(detailTagKey && TAGS[detailTagKey]){
+    const found = findTagRef(detailTagKey);
+    if(found){ renderDetailFor(found.tag.cat, found.ref, found.tag); return; }
   }
+  dpEmpty.style.display='block'; dpContent.style.display='none';
 }
 
 /* ================= TOOLBAR ================= */
