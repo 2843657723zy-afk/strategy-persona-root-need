@@ -460,26 +460,6 @@ async function loadSnapshot(){
   if(remote) return remote;
   return loadLocalSnapshot();
 }
-function saveState(){
-  let snapshot;
-  try{
-    snapshot = {
-      v:1,
-      personasData: PERSONAS_DATA,
-      needsData: NEEDS_DATA,
-      painpointsData: PAINPOINTS_DATA,
-      mechsData: MECHS_DATA,
-      customTags: CUSTOM_TAGS,
-      customTagCounter,
-      relations: [...RELATIONS.entries()].map(([k,set])=>[k, [...set]]),
-      activePersonas: [...activePersonas.values()].map(n=>({id:n.ref.id, x:n.x, y:n.y})),
-      promotedNeedIds: [...promotedNeeds],
-      promotedPainpointIds: [...promotedPainpoints]
-    };
-    localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot));
-  }catch(e){ /* 本地存储不可用（隐私模式/容量满），静默跳过，不影响正常使用 */ }
-  if(snapshot) pushRemoteSnapshot(snapshot);
-}
 function buildAutoRelations(){
   PERSONAS_DATA.forEach(p=>{
     NEEDS_DATA.forEach(nd=>{
@@ -803,6 +783,29 @@ let detailTagKey = null; // 左侧标签池/关联标签"点击"时展示在右�
 let nodes = [];
 let nodeById = {};
 let edges = [];
+
+/* saveState 必须放在这里（STATE 变量声明之后），因为它要读 activePersonas/promotedNeeds/promotedPainpoints——
+   这几个是 initBoard 这个 async IIFE 内部的局部变量，放到 IIFE 外面的话闭包访问不到，会直接报错 */
+function saveState(){
+  let snapshot;
+  try{
+    snapshot = {
+      v:1,
+      personasData: PERSONAS_DATA,
+      needsData: NEEDS_DATA,
+      painpointsData: PAINPOINTS_DATA,
+      mechsData: MECHS_DATA,
+      customTags: CUSTOM_TAGS,
+      customTagCounter,
+      relations: [...RELATIONS.entries()].map(([k,set])=>[k, [...set]]),
+      activePersonas: [...activePersonas.values()].map(n=>({id:n.ref.id, x:n.x, y:n.y})),
+      promotedNeedIds: [...promotedNeeds],
+      promotedPainpointIds: [...promotedPainpoints]
+    };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot));
+  }catch(e){ /* 本地存储不可用（隐私模式/容量满），静默跳过，不影响正常使用 */ }
+  if(snapshot) pushRemoteSnapshot(snapshot);
+}
 
 const canvasWrap = document.getElementById('canvasWrap');
 const svg = document.getElementById('edgeSvg');
